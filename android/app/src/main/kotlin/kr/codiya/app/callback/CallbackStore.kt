@@ -32,12 +32,8 @@ object CallbackStore {
         return if (rest.startsWith("82") && rest.length >= 11) "0" + rest.substring(2) else rest
     }
 
-    fun mask(d: String): String {
-        val m = Regex("^([*#]\\d{3})(\\d{7,})$").find(d)
-        if (m != null) return m.groupValues[1] + "-" + mask(m.groupValues[2])
-        val n = d.filter { it.isDigit() }
-        return if (n.length < 7) "***" else n.substring(0, 3) + "-****-" + n.takeLast(4)
-    }
+    /** (예전엔 가린 번호) 이제는 서버에도 전체 번호로 보냄 → 서버·앱 표시 모양 같게 */
+    fun mask(d: String): String = pretty(d)
 
     /** 화면에 보여줄 전체 번호 (가림 없이): 010-1234-5678 · 투넘버는 *281 010-1234-5678 */
     fun pretty(d: String): String {

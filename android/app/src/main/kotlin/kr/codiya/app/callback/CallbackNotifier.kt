@@ -78,7 +78,7 @@ object CallbackNotifier {
             hasHint -> "🎯 ${top.optString("title")} 홈페이지에서 온 전화예요. 안내 문자를 보낼까요?"
             ordered.size == 1 -> "${top.optString("title")} 안내 문자를 보낼까요?"
             else -> "어떤 문자를 보낼까요? 눌러서 고르고 보내세요"
-        }
+        } + (if (!CallbackPopup.canShow(c)) "\n💡 앱 설정에서 '다른 앱 위에 표시'를 켜면 알림 없이 바로 창이 떠요" else "")
         val b = NotificationCompat.Builder(c, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_notify)
             .setColor(0xFF0AA394.toInt())

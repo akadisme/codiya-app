@@ -195,12 +195,16 @@ object MemoPopup {
             lastKey = key; lastAt = now
         }
         CallbackStore.addRecent(app, num)
-        CallbackStore.diag(app, "☎ 전화 옴 " + CallbackStore.mask(num) + " · 위쪽 알림에 메모 표시 (끊으면 메모창)")
-        Thread { runCatching { notifyMemo(app, num) } }.start()
+        CallbackStore.diag(app, "☎ 전화 옴 " + CallbackStore.mask(num) + " · 가운데 아래 작은 메모창 (끊으면 펼침)")
         // 휴대폰 전화 알림을 '간단한 팝업'(위쪽)으로 해 두면, 메모창을 가운데 아래에 같이 띄울 수 있어요
+        // 알림은 메모창을 못 띄웠을 때만 (대신 보여주기)
         main.post {
             if (curKey == key && root != null) return@post
-            runCatching { show(app, num, key, ringing = true) }.onFailure { root = null; curKey = "" }
+            runCatching { show(app, num, key, ringing = true) }.onFailure {
+                root = null; curKey = ""
+                CallbackStore.diag(app, "☎ 전화 옴 " + CallbackStore.mask(num) + " · 메모창을 못 띄워 알림으로 (" + it.javaClass.simpleName + ")")
+                Thread { runCatching { notifyMemo(app, num) } }.start()
+            }
         }
         Thread {
             val j = CallbackStore.memoGet(app, key, CallbackStore.mask(num), call = false)

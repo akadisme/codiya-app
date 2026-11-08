@@ -334,6 +334,7 @@ object MemoPopup {
 
     /** 저장: 이름이 바뀌었으면 이름도, 새 메모가 있으면 기록 추가 */
     private fun save(c: Context, closeAfter: Boolean = false) {
+        if (voiceOn) stopVoice()
         val key = curKey; val num = curNum
         if (key.isEmpty()) return
         val name = nameEt?.text?.toString()?.trim() ?: ""
@@ -361,6 +362,7 @@ object MemoPopup {
 
     /** 닫거나 다른 번호로 바뀔 때 적던 메모 저장 */
     private fun saveDraft(c: Context) {
+        if (voiceOn) stopVoice()
         val memo = memoEt?.text?.toString()?.trim() ?: ""
         val name = nameEt?.text?.toString()?.trim() ?: ""
         if (curKey.isEmpty() || (memo.isEmpty() && name == (data?.optString("name", "") ?: ""))) return
@@ -402,18 +404,18 @@ object MemoPopup {
         val sr = SpeechRecognizer.createSpeechRecognizer(c)
         rec = sr
         micTv?.text = "⏺ 듣는 중… 다 말하면 눌러서 끝"
-        fun show(t: String) {
+        fun put(t: String) {
             val all = listOf(voiceBase, t).filter { it.isNotBlank() }.joinToString(" ")
             memoEt?.setText(all); memoEt?.setSelection(all.length)
         }
         sr.setRecognitionListener(object : RecognitionListener {
             override fun onPartialResults(b: Bundle?) {
                 val t = b?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull() ?: return
-                if (t.isNotBlank()) show(t)
+                if (t.isNotBlank()) put(t)
             }
             override fun onResults(results: Bundle?) {
                 val t = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull() ?: ""
-                if (t.isNotBlank()) { show(t); voiceBase = memoEt?.text?.toString()?.trim() ?: voiceBase; voiceUsed = true }
+                if (t.isNotBlank()) { put(t); voiceBase = memoEt?.text?.toString()?.trim() ?: voiceBase; voiceUsed = true }
                 main.postDelayed({ listenOnce(c) }, 150) // 이어서 계속 듣기
             }
             override fun onError(error: Int) {

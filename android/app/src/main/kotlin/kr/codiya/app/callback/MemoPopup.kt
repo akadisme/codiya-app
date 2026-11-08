@@ -107,12 +107,12 @@ object MemoPopup {
         if (key.isEmpty()) return
         synchronized(this) { // 같은 전화로 두 번 불려도 한 번만 (전화 상태 · 번호 확인)
             val now = System.currentTimeMillis()
-            if (key == lastKey && now - lastAt < 90_000L) return
+            if (key == lastKey && now - lastAt < 8_000L) return // 같은 울림이 두 번 알려 온 것만 거름
             lastKey = key; lastAt = now
         }
         CallbackStore.addRecent(app, num)
         main.post {
-            if (curKey == key && root != null) return@post // 같은 번호 두 번 알림
+            if (curKey == key && root != null) { if (small) setSmall(app, false); return@post } // 이미 떠 있으면 크게만
             runCatching { show(app, num, key) }
         }
         Thread {
@@ -177,7 +177,7 @@ object MemoPopup {
         edit.addView(nameEt, lp(10f))
         histBox = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
         val sc = ScrollView(c).apply { addView(histBox); isVerticalScrollBarEnabled = true }
-        val maxH = (c.resources.displayMetrics.heightPixels * 0.28).toInt()
+        val maxH = (c.resources.displayMetrics.heightPixels * 0.55).toInt()
         body.addView(sc, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(c, 8f) })
         sc.viewTreeObserver.addOnGlobalLayoutListener {
             if (sc.height > maxH) sc.layoutParams = (sc.layoutParams as LinearLayout.LayoutParams).apply { height = maxH }
@@ -198,7 +198,6 @@ object MemoPopup {
             gravity = Gravity.CENTER; background = grad(c, GOLD2, GOLD, 12f); setPadding(0, dp(c, 11f), 0, dp(c, 11f))
             setOnClickListener { save(c) }
         }
-        btns.addView(micTv, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { rightMargin = dp(c, 8f) })
         btns.addView(save, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         edit.addView(btns, lp(8f))
         body.addView(edit)
@@ -235,7 +234,7 @@ object MemoPopup {
         var downY = 0f; var startY = 0; var moved = false
         val drag = View.OnTouchListener { v, e ->
             when (e.actionMasked) {
-                MotionEvent.ACTION_DOWN -> { downY = e.rawY; startY = p.y; moved = false; false }
+                MotionEvent.ACTION_DOWN -> { downY = e.rawY; startY = p.y; moved = false; true }
                 MotionEvent.ACTION_MOVE -> {
                     val dy = (e.rawY - downY).toInt()
                     if (Math.abs(dy) > dp(c, 6f)) moved = true
@@ -247,7 +246,7 @@ object MemoPopup {
                     }
                     moved
                 }
-                MotionEvent.ACTION_UP -> { if (!moved && v === smallTv) setSmall(c, false); moved }
+                MotionEvent.ACTION_UP -> { if (!moved && v === smallTv) setSmall(c, false); true }
                 else -> false
             }
         }
@@ -266,6 +265,16 @@ object MemoPopup {
         wm.addView(r, p)
         root = r
         render(c)
+        // 에이닷·T전화 같은 전화앱이 자기 화면을 나중에 띄우면 메모창이 뒤로 숨어서, 맨 앞으로 몇 번 다시 올려요
+        for (ms in longArrayOf(700L, 1600L, 3000L, 5000L)) main.postDelayed({ bringFront(c, r) }, ms)
+    }
+
+    private fun bringFront(c: Context, r: FrameLayout) {
+        if (root !== r) return
+        if (editBox?.visibility == View.VISIBLE && memoEt?.hasFocus() == true) return // 글 쓰는 중엔 그대로
+        val p = params ?: return
+        val wm = c.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        runCatching { wm.removeViewImmediate(r); wm.addView(r, p) }
     }
 
     private fun setFocusable(c: Context, on: Boolean) {
@@ -349,8 +358,8 @@ object MemoPopup {
             val j = CallbackStore.memoAdd(c, key, CallbackStore.mask(num), if (name != oldName) name else null, memo, kind)
             main.post {
                 if (j == null) {
-                    Toast.makeText(c, "저장하지 못했어요. 인터넷을 확인해주세요", Toast.LENGTH_SHORT).show()
-                    if (curKey == key && memo.isNotEmpty()) memoEt?.setText(memo)
+                    val why = CallbackStore.lastErr
+                    Toast.makeText(c, "저장하지 못했어요" + (if (why.isNotEmpty()) " · $why" else ""), Toast.LENGTH_LONG).show()
                 } else {
                     if (curKey == key) { data = j; render(c) }
                     Toast.makeText(c, "📒 저장했어요", Toast.LENGTH_SHORT).show()

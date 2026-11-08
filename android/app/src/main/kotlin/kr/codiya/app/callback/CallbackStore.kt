@@ -95,23 +95,63 @@ object CallbackStore {
         prefs(c).getString("memo_$key", null)?.let { runCatching { JSONObject(it) }.getOrNull() }
 
     /** 메모 저장 (name 이 null 이면 이름은 그대로) → 새 메모 묶음 또는 null — 백그라운드에서 */
-    fun memoAdd(c: Context, key: String, mask: String, name: String?, body: String, kind: String): JSONObject? {
-        val token = prefs(c).getString("token", null) ?: return null
+    /** 마지막 저장 실패 이유 (화면 안내용) */
+    @Volatile var lastErr: String = ""
+
+    fun memoAdd(c: Context, key: String, mask: String, name: String?, body: String, kind: String, queueOnFail: Boolean = true): JSONObject? {
+        val token = prefs(c).getString("token", null)
+        if (token == null) { lastErr = "코디야 앱에 로그인이 안 되어 있어요"; return null }
+        val phone = numOf(c, key)
+        val j = memoAddOnce(c, token, key, mask, name, body, kind, phone)
+        if (j == null && queueOnFail && (body.isNotEmpty() || name != null)) queueMemo(c, key, mask, name, body, kind, phone)
+        if (j != null) Thread { flushMemoQueue(c) }.start()
+        return j
+    }
+
+    private fun memoAddOnce(c: Context, token: String, key: String, mask: String, name: String?, body: String, kind: String, phone: String): JSONObject? {
         return try {
             val con = (URL(api(c) + "/v1/memo/add").openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"; doOutput = true; connectTimeout = 5000; readTimeout = 25000
                 setRequestProperty("Content-Type", "application/json")
             }
-            val o = JSONObject().put("token", token).put("hash", key).put("mask", mask).put("body", body).put("kind", kind).put("phone", numOf(c, key))
+            val o = JSONObject().put("token", token).put("hash", key).put("mask", mask).put("body", body).put("kind", kind).put("phone", phone)
             if (name != null) o.put("name", name)
             con.outputStream.use { it.write(o.toString().toByteArray()) }
             val res = (if (con.responseCode in 200..299) con.inputStream else con.errorStream)?.bufferedReader()?.readText() ?: ""
             con.disconnect()
             val j = JSONObject(res)
-            if (j.optBoolean("ok")) { prefs(c).edit().putString("memo_$key", res).apply(); j } else null
-        } catch (_: Exception) {
+            if (j.optBoolean("ok")) { lastErr = ""; prefs(c).edit().putString("memo_$key", res).apply(); j }
+            else { lastErr = j.optString("msg", "서버가 저장을 거절했어요"); null }
+        } catch (e: Exception) {
+            lastErr = "인터넷 연결이 약해요 (연결되면 자동으로 다시 저장해요)"
             null
         }
+    }
+
+    /** 저장 못 한 메모는 휴대폰에 잠시 두었다가 다음에 자동으로 다시 저장 */
+    @Synchronized
+    private fun queueMemo(c: Context, key: String, mask: String, name: String?, body: String, kind: String, phone: String) {
+        val p = prefs(c)
+        val arr = runCatching { org.json.JSONArray(p.getString("memo_q", "[]")) }.getOrDefault(org.json.JSONArray())
+        if (arr.length() >= 50) return
+        arr.put(JSONObject().put("key", key).put("mask", mask).put("name", name ?: JSONObject.NULL).put("body", body).put("kind", kind).put("phone", phone))
+        p.edit().putString("memo_q", arr.toString()).apply()
+    }
+
+    @Synchronized
+    fun flushMemoQueue(c: Context) {
+        val p = prefs(c)
+        val token = p.getString("token", null) ?: return
+        val arr = runCatching { org.json.JSONArray(p.getString("memo_q", "[]")) }.getOrDefault(org.json.JSONArray())
+        if (arr.length() == 0) return
+        val left = org.json.JSONArray()
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val nm = if (o.isNull("name")) null else o.optString("name")
+            val ok = memoAddOnce(c, token, o.optString("key"), o.optString("mask"), nm, o.optString("body"), o.optString("kind"), o.optString("phone")) != null
+            if (!ok) left.put(o)
+        }
+        p.edit().putString("memo_q", left.toString()).apply()
     }
 
     /** 최근 걸려온 번호 (에이닷 요약 공유할 때 고르기용, 휴대폰 안에만 저장) */
@@ -168,6 +208,7 @@ object CallbackStore {
     /** 서버에서 새로 받기 (실패하면 저장된 것) — 반드시 백그라운드에서 호출 */
     fun fetchConfig(c: Context, timeoutMs: Int = 3500): JSONObject? {
         val p = prefs(c)
+        if (p.getString("memo_q", "[]") != "[]") Thread { runCatching { flushMemoQueue(c) } }.start()
         val token = p.getString("token", null) ?: return cachedConfig(c)
         val api = p.getString("api", "https://codiya.kr/cdapi/app/index.php")!!
         return try {

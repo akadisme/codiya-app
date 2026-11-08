@@ -28,11 +28,11 @@ class MemoShareActivity : Activity() {
         val recent = CallbackStore.recent(this)
         val fmt = SimpleDateFormat("MM/dd HH:mm", Locale.KOREA)
         val nums = ArrayList<String>(); val labels = ArrayList<String>()
-        if (inText != null && inText.length >= 9) { nums.add(inText); labels.add("📄 요약 속 번호 " + CallbackStore.mask(inText)) }
+        if (inText != null && inText.length >= 9) { nums.add(inText); labels.add("📄 요약 속 번호 " + CallbackStore.pretty(inText)) }
         for (r in recent) {
             val n = r.optString("n"); if (n.isEmpty() || nums.contains(n)) continue
             val nm = CallbackStore.memoCached(this, CallbackStore.memoKey(n))?.optString("name", "") ?: ""
-            nums.add(n); labels.add("📞 " + fmt.format(Date(r.optLong("t"))) + "  " + (if (nm.isNotEmpty()) "$nm · " else "") + CallbackStore.mask(n))
+            nums.add(n); labels.add("📞 " + fmt.format(Date(r.optLong("t"))) + "  " + (if (nm.isNotEmpty()) "$nm · " else "") + CallbackStore.pretty(n))
             if (nums.size >= 12) break
         }
         nums.add(""); labels.add("⌨️ 번호 직접 입력")
@@ -64,7 +64,7 @@ class MemoShareActivity : Activity() {
         Thread {
             val j = CallbackStore.memoAdd(app, CallbackStore.memoKey(num), CallbackStore.mask(num), null, text, "share")
             runOnUiThread {
-                Toast.makeText(app, if (j != null) "📒 ${CallbackStore.mask(num)} 메모에 AI 요약을 저장했어요" else "저장하지 못했어요. 인터넷을 확인해주세요", Toast.LENGTH_LONG).show()
+                Toast.makeText(app, if (j != null) "📒 ${CallbackStore.pretty(num)} 메모에 AI 요약을 저장했어요" else "저장하지 못했어요. 인터넷을 확인해주세요", Toast.LENGTH_LONG).show()
                 finish()
             }
         }.start()

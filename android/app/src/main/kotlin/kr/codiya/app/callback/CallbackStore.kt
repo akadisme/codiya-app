@@ -39,6 +39,21 @@ object CallbackStore {
         return if (n.length < 7) "***" else n.substring(0, 3) + "-****-" + n.takeLast(4)
     }
 
+    /** 화면에 보여줄 전체 번호 (가림 없이): 010-1234-5678 · 투넘버는 *281 010-1234-5678 */
+    fun pretty(d: String): String {
+        val m = Regex("^([*#]\\d{3})(\\d{7,})$").find(d)
+        if (m != null) return m.groupValues[1] + " " + pretty(m.groupValues[2])
+        val n = d.filter { it.isDigit() }
+        return when {
+            n.length == 11 -> n.substring(0, 3) + "-" + n.substring(3, 7) + "-" + n.substring(7)
+            n.length == 10 && n.startsWith("02") -> n.substring(0, 2) + "-" + n.substring(2, 6) + "-" + n.substring(6)
+            n.length == 10 -> n.substring(0, 3) + "-" + n.substring(3, 6) + "-" + n.substring(6)
+            n.length == 9 && n.startsWith("02") -> n.substring(0, 2) + "-" + n.substring(2, 5) + "-" + n.substring(5)
+            n.length == 8 -> n.substring(0, 4) + "-" + n.substring(4)
+            else -> n
+        }
+    }
+
     fun hash(d: String): String {
         val md = MessageDigest.getInstance("SHA-1").digest("grcb|$d".toByteArray())
         return md.joinToString("") { "%02x".format(it) }

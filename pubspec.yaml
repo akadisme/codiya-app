@@ -1,7 +1,7 @@
 name: codiya_app
 description: 코디야 앱
 publish_to: 'none'
-version: 1.0.21+22
+version: 1.0.22+23
 
 environment:
   sdk: ^3.7.0

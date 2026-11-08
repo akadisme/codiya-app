@@ -139,7 +139,7 @@ object CallbackPopup {
 
         card.addView(text("📨 콜백문자", 13f, GOLD, true))
         card.addView(text("콜백문자를 보내시겠습니까?", 19f, INK, true), lp(4f))
-        val masked = CallbackStore.mask(num)
+        val masked = CallbackStore.pretty(num)
         card.addView(text(if (missed) "📵 부재중 전화 · $masked" else "📞 통화 종료 · $masked", 14.5f, MUTE), lp(4f))
         if (hint) {
             card.addView(text("🎯 ${list[0].optString("title")} 홈페이지에서 온 전화예요", 13.5f, 0xFF1D7D5C.toInt(), true).apply {

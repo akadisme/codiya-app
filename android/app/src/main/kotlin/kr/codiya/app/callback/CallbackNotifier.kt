@@ -37,7 +37,7 @@ object CallbackNotifier {
 
     /** 백그라운드에서 호출 */
     fun afterCall(c: Context, num: String, missed: Boolean, test: Boolean = false) {
-        val head = (if (test) "테스트" else if (missed) "부재중" else "통화 끝남") + " " + CallbackStore.mask(num)
+        val head = (if (test) "테스트" else if (missed) "부재중" else "통화 끝남") + " " + CallbackStore.pretty(num)
         val cfg = CallbackStore.fetchConfig(c)
         if (cfg == null) { CallbackStore.diag(c, "$head · 설정을 못 불러옴 (인터넷 확인 후 앱을 한 번 열어주세요)"); return }
         if (!cfg.optBoolean("linked", true)) { CallbackStore.diag(c, "$head · 코디야 로그인이 연결 안 됨 (앱에서 로그인해주세요)"); return }
@@ -72,7 +72,7 @@ object CallbackNotifier {
     fun notifyBar(c: Context, num: String, missed: Boolean, ordered: List<JSONObject>, hasHint: Boolean) {
         val top = ordered.first()
         channel(c)
-        val masked = CallbackStore.mask(num)
+        val masked = CallbackStore.pretty(num)
         val title = if (missed) "📵 부재중 $masked" else "📞 통화 종료 $masked"
         val text = when {
             hasHint -> "🎯 ${top.optString("title")} 홈페이지에서 온 전화예요. 안내 문자를 보낼까요?"

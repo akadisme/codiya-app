@@ -146,7 +146,9 @@ object MemoPopup {
             val m = items.optJSONObject(i) ?: continue
             sb.append(m.optString("at")).append("  ").append(m.optString("body").replace("\n", " ").take(80)).append('\n')
         }
-        val text = (if (sb.isEmpty()) "아직 남긴 메모가 없어요 · 끊으면 메모창에서 남겨보세요" else sb.toString().trim())
+        val calls = d?.optInt("calls", 0) ?: 0
+        val none = d != null && sb.isEmpty() && name.isEmpty()
+        val text = if (d == null) CallbackStore.mask(num) + " · 메모를 불러오지 못했어요 (끊으면 메모창에서 다시 확인)" else if (sb.isEmpty()) CallbackStore.mask(num) + (if (calls > 1) " · 통화 ${calls}번" else "") + " · 끊으면 메모창에서 남겨보세요" else sb.toString().trim()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val ch = android.app.NotificationChannel(MEMO_CH, "전화 메모 (통화 중)", android.app.NotificationManager.IMPORTANCE_HIGH).apply {
                 description = "전화가 올 때 그 고객의 지난 메모를 위쪽 알림으로 보여줘요"
@@ -163,7 +165,8 @@ object MemoPopup {
         val b = androidx.core.app.NotificationCompat.Builder(app, MEMO_CH)
             .setSmallIcon(kr.codiya.app.R.drawable.ic_stat_notify)
             .setColor(0xFF0AA394.toInt())
-            .setContentTitle("📒 " + (if (name.isNotEmpty()) "$name · " else "") + CallbackStore.mask(num))
+            .setContentTitle(if (none) (if (calls <= 1) "📒 처음 온 전화예요" else "📒 메모가 없는 번호예요")
+                else "📒 " + (if (name.isNotEmpty()) "$name · " else "") + CallbackStore.mask(num) + (if (calls > 1) "  ·  통화 ${calls}번" else ""))
             .setContentText(text)
             .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText(text))
             .setPriority(androidx.core.app.NotificationCompat.PRIORITY_MAX)
@@ -171,7 +174,7 @@ object MemoPopup {
             .setVisibility(androidx.core.app.NotificationCompat.VISIBILITY_PUBLIC)
             .setOnlyAlertOnce(true)
             .setAutoCancel(true)
-            .setTimeoutAfter(60 * 60 * 1000L) // 긴 통화 중에도 쓸어내리면 보이게 (끊으면 메모창으로 바뀜)
+            .setTimeoutAfter(15 * 60 * 1000L) // 통화 중엔 남아 있고, 끊으면 메모창으로 바뀌며 지워짐 · 다른 번호가 오면 그 번호로 바뀜 · 늦어도 15분 뒤 사라짐
         if (pi != null) b.setContentIntent(pi)
         try { androidx.core.app.NotificationManagerCompat.from(app).notify(7800, b.build()) } catch (_: SecurityException) {}
     }

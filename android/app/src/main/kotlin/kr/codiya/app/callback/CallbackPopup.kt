@@ -92,7 +92,9 @@ object CallbackPopup {
         // 에이닷·T전화처럼 통화 후 자기 화면을 띄우는 전화앱보다 앞에 오게 몇 번 다시 올림
         val h = Handler(Looper.getMainLooper())
         for (ms in longArrayOf(600L, 1500L, 2800L, 4500L)) h.postDelayed({
-            if (current === root) runCatching { wm.removeViewImmediate(root); wm.addView(root, params); root.requestFocus() }
+            // 다른 창(에이닷 통화 후 화면 등)에 가려져 포커스를 잃었을 때만 다시 올림 → 안 가려졌으면 깜빡이지 않음
+            if (current === root && root.isAttachedToWindow && !root.hasWindowFocus())
+                runCatching { wm.removeViewImmediate(root); wm.addView(root, params); root.requestFocus() }
         }, ms)
     }
 

@@ -38,8 +38,7 @@ class PermWatch : BroadcastReceiver() {
             }
             // 확인 창: 일부 휴대폰은 켜 놓아도 꺼짐으로 알려줘서, 최근에 창을 실제로 띄웠으면 켜진 걸로 봄
             val p = CallbackStore.prefs(c)
-            val overlayWorked = System.currentTimeMillis() - p.getLong("ov_ok_at", 0L) < 3L * 86400_000L &&
-                p.getLong("ov_ok_ver", -1L) == verCode(c)
+            val overlayWorked = false // canShow 가 실제로 창을 띄워 보며 확인함
             return linkedMapOf(
                 "전화" to ok(Manifest.permission.READ_PHONE_STATE),
                 "통화 기록" to ok(Manifest.permission.READ_CALL_LOG),

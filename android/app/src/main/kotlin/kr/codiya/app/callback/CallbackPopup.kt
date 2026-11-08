@@ -47,12 +47,46 @@ object CallbackPopup {
     fun canShow(c: Context): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true
         if (Settings.canDrawOverlays(c)) return true
+        if (probe(c)) return true // 휴대폰이 꺼짐으로 알려줘도 실제로 띄워지면 켜진 것
         return try {
             val ops = c.getSystemService(Context.APP_OPS_SERVICE) as android.app.AppOpsManager
             val mode = if (Build.VERSION.SDK_INT >= 29) ops.unsafeCheckOpNoThrow("android:system_alert_window", android.os.Process.myUid(), c.packageName)
                        else @Suppress("DEPRECATION") ops.checkOpNoThrow("android:system_alert_window", android.os.Process.myUid(), c.packageName)
             mode == android.app.AppOpsManager.MODE_ALLOWED
         } catch (_: Exception) { false }
+    }
+
+    /** 눈에 안 보이는 1점짜리 창을 실제로 띄워 보고 바로 지움 → 진짜 켜져 있는지 확인 (1분 동안 결과 기억) */
+    @Volatile private var probeAt = 0L
+    @Volatile private var probeOk = false
+    fun probe(c: Context): Boolean {
+        val now = System.currentTimeMillis()
+        if (now - probeAt < 60_000L) return probeOk
+        val app = c.applicationContext
+        val run = {
+            var ok = false
+            try {
+                val wm = app.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                           else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
+                val v = View(app)
+                val lp = WindowManager.LayoutParams(1, 1, type,
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+                    PixelFormat.TRANSPARENT)
+                wm.addView(v, lp); ok = true
+                runCatching { wm.removeViewImmediate(v) }
+            } catch (_: Throwable) {}
+            ok
+        }
+        val ok: Boolean = if (Looper.myLooper() == Looper.getMainLooper()) run() else {
+            var r = false
+            val latch = CountDownLatch(1)
+            Handler(Looper.getMainLooper()).post { r = run(); latch.countDown() }
+            latch.await(1500, TimeUnit.MILLISECONDS)
+            r
+        }
+        probeAt = now; probeOk = ok
+        return ok
     }
 
     /** 백그라운드에서 호출 → 화면에 띄우고 성공 여부 반환 */

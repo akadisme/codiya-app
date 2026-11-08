@@ -71,7 +71,11 @@ object MemoPopup {
     /** 메모 쓰기 칸 열기/닫기 (받기 전엔 닫혀 있어서 창이 작아요) */
     private fun showEdit(c: Context, on: Boolean) {
         editBox?.visibility = if (on) View.VISIBLE else View.GONE
-        if (on) { memoEt?.requestFocus() } else setFocusable(c, false)
+        if (on) {
+            setFocusable(c, true)
+            memoEt?.requestFocus()
+            main.postDelayed({ memoEt?.let { (c.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(it, InputMethodManager.SHOW_IMPLICIT) } }, 150)
+        } else setFocusable(c, false)
     }
 
     private fun dp(c: Context, v: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, c.resources.displayMetrics).toInt()
@@ -179,7 +183,7 @@ object MemoPopup {
             if (sc.height > maxH) sc.layoutParams = (sc.layoutParams as LinearLayout.LayoutParams).apply { height = maxH }
         }
         memoEt = EditText(c).apply {
-            hint = "새 메모 (통화 내용·약속 등)"; minLines = 2; maxLines = 5
+            hint = "새 메모 (키보드의 🎤 마이크로 말해도 돼요)"; minLines = 2; maxLines = 5
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 14.5f)
             background = round(c, 0xFFF5F7F8.toInt(), 12f); setPadding(dp(c, 12f), dp(c, 9f), dp(c, 12f), dp(c, 9f))
@@ -366,48 +370,90 @@ object MemoPopup {
     }
 
     // ---------- 🎤 말로 메모 (휴대폰 받아쓰기 · 무료) ----------
+    // 🎤 말로 메모: 말을 멈춰도 [끝]을 누를 때까지 계속 들어요 (말하는 중간 글자도 바로 보여요)
+    private var voiceOn = false
+    private var voiceBase = ""
+    private var voiceStarted = 0L
+
     private fun voice(c: Context) {
-        if (rec != null) { rec?.stopListening(); return }
+        if (voiceOn) { stopVoice(); return }
         if (c.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             Toast.makeText(c, "앱 콜백문자 설정에서 '마이크' 권한을 켜주세요", Toast.LENGTH_LONG).show(); return
         }
-        if (!SpeechRecognizer.isRecognitionAvailable(c)) { Toast.makeText(c, "이 휴대폰은 받아쓰기를 지원하지 않아요", Toast.LENGTH_SHORT).show(); return }
+        if (!SpeechRecognizer.isRecognitionAvailable(c)) {
+            Toast.makeText(c, "이 휴대폰은 받아쓰기를 지원하지 않아요. 메모 칸을 누르고 키보드의 🎤를 써 주세요", Toast.LENGTH_LONG).show(); return
+        }
+        voiceOn = true; voiceStarted = System.currentTimeMillis()
+        voiceBase = memoEt?.text?.toString()?.trim() ?: ""
+        listenOnce(c)
+    }
+
+    private fun stopVoice() {
+        voiceOn = false
+        runCatching { rec?.stopListening() }
+        main.postDelayed({ runCatching { rec?.destroy() }; rec = null }, 400)
+        micTv?.text = "🎤 말로 메모"
+    }
+
+    private fun listenOnce(c: Context) {
+        if (!voiceOn) return
+        if (System.currentTimeMillis() - voiceStarted > 3 * 60 * 1000L) { stopVoice(); return } // 최대 3분
+        runCatching { rec?.destroy() }
         val sr = SpeechRecognizer.createSpeechRecognizer(c)
         rec = sr
-        micTv?.text = "⏺ 듣는 중… (누르면 끝)"
+        micTv?.text = "⏺ 듣는 중… 다 말하면 눌러서 끝"
+        fun show(t: String) {
+            val all = listOf(voiceBase, t).filter { it.isNotBlank() }.joinToString(" ")
+            memoEt?.setText(all); memoEt?.setSelection(all.length)
+        }
         sr.setRecognitionListener(object : RecognitionListener {
+            override fun onPartialResults(b: Bundle?) {
+                val t = b?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull() ?: return
+                if (t.isNotBlank()) show(t)
+            }
             override fun onResults(results: Bundle?) {
                 val t = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull() ?: ""
-                if (t.isNotEmpty()) {
-                    val cur = memoEt?.text?.toString() ?: ""
-                    memoEt?.setText(if (cur.isBlank()) t else "$cur $t")
-                    voiceUsed = true
-                }
-                end()
+                if (t.isNotBlank()) { show(t); voiceBase = memoEt?.text?.toString()?.trim() ?: voiceBase; voiceUsed = true }
+                main.postDelayed({ listenOnce(c) }, 150) // 이어서 계속 듣기
             }
             override fun onError(error: Int) {
-                Toast.makeText(c, if (error == SpeechRecognizer.ERROR_AUDIO || error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY)
-                    "통화 중에는 마이크를 쓸 수 없어요. 통화가 끝난 뒤 눌러주세요" else "잘 못 들었어요. 다시 눌러주세요", Toast.LENGTH_SHORT).show()
-                end()
+                when (error) {
+                    // 말이 잠깐 없었을 뿐 → 조용히 다시 듣기
+                    SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> main.postDelayed({ listenOnce(c) }, 150)
+                    SpeechRecognizer.ERROR_AUDIO, SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> {
+                        Toast.makeText(c, "지금은 마이크를 쓸 수 없어요 (통화 중이면 끝난 뒤에). 메모 칸을 누르고 키보드의 🎤도 쓸 수 있어요", Toast.LENGTH_LONG).show()
+                        stopVoice()
+                    }
+                    SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> {
+                        Toast.makeText(c, "인터넷 연결이 약해요. 메모 칸을 누르고 키보드의 🎤로 말해 보세요", Toast.LENGTH_LONG).show()
+                        stopVoice()
+                    }
+                    else -> main.postDelayed({ listenOnce(c) }, 300)
+                }
             }
-            private fun end() { runCatching { sr.destroy() }; rec = null; micTv?.text = "🎤 말로 메모" }
             override fun onReadyForSpeech(params: Bundle?) {}
             override fun onBeginningOfSpeech() {}
             override fun onRmsChanged(rmsdB: Float) {}
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() {}
-            override fun onPartialResults(partialResults: Bundle?) {}
             override fun onEvent(eventType: Int, params: Bundle?) {}
         })
         sr.startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ko-KR")
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "ko-KR")
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, c.packageName)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 4000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 3000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 2000L)
         })
     }
 
     fun close(c: Context) {
         val r = root ?: return
+        voiceOn = false
         runCatching { rec?.destroy() }; rec = null
         runCatching { (c.getSystemService(Context.WINDOW_SERVICE) as WindowManager).removeView(r) }
         root = null; curKey = ""; curNum = ""; data = null

@@ -108,6 +108,10 @@
     </application>
 
     <queries>
+        <!-- 휴대폰에 깔린 전화앱 목록 확인용 (감지 기록에 기본 전화앱 표시) -->
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+        </intent>
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />

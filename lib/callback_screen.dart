@@ -16,6 +16,16 @@ class CallbackBridge {
     } catch (_) {}
   }
 
+  /// 감지 기록 전체 (버전·권한·기본 전화앱·기록·오류)
+  static Future<String> diagText() async {
+    if (!Platform.isAndroid) return '';
+    try {
+      return '${await _ch.invokeMethod('diagText') ?? ''}';
+    } catch (_) {
+      return '';
+    }
+  }
+
   /// 알림을 눌러 앱이 열렸을 때 열어야 할 주소 (없으면 '')
   static Future<String> takeOpen() async {
     if (!Platform.isAndroid) return '';
@@ -250,7 +260,8 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
                               final info = '${appUserAgentSuffix.trim()} · 확인 창 ${_overlay ? '켜짐' : '꺼짐'} · 통화 기록 ${_s['calllog'] == true ? '허용' : '안 됨'}'
                                   ' · 전화 ${_s['phone'] == true ? '허용' : '안 됨'} · 번호 확인 ${_s['role'] == true ? '켜짐' : '꺼짐'}\n\n${_s['diag']}'
                                   '${(_s['crash'] ?? '').toString().isNotEmpty ? '\n\n[마지막 오류]\n${_s['crash']}' : ''}';
-                              await Clipboard.setData(ClipboardData(text: info));
+                              final full = await CallbackBridge.diagText();
+                              await Clipboard.setData(ClipboardData(text: full.isNotEmpty ? full : info));
                               if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('복사했어요. 채팅창에 붙여넣기 해 주세요.')));
                               }

@@ -72,6 +72,7 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                 }
                 "takeOpen" -> { result.success(pendingOpen ?: ""); pendingOpen = null }
+                "diagText" -> result.success(CallbackStore.diagText(this))
                 "openAppSettings" -> {
                     startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
                     result.success(true)

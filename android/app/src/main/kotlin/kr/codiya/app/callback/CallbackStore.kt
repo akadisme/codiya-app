@@ -114,8 +114,16 @@ object CallbackStore {
             " · 통화 기록 " + (if (ok(android.Manifest.permission.READ_CALL_LOG)) "허용" else "안 됨") +
             " · 전화 " + (if (ok(android.Manifest.permission.READ_PHONE_STATE)) "허용" else "안 됨") +
             " · 번호 확인 " + (if (role) "켜짐" else "꺼짐")
+        // 기본 전화앱과 깔린 전화앱들 (삼성 '간단한 팝업' 설정은 기본 전화앱이 삼성 '전화'일 때만 먹혀요)
+        val pm = c.packageManager
+        fun label(pkg: String?): String = if (pkg.isNullOrEmpty()) "?" else runCatching { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() + " (" + pkg + ")" }.getOrDefault(pkg)
+        val defDialer = runCatching { (c.getSystemService(Context.TELECOM_SERVICE) as android.telecom.TelecomManager).defaultDialerPackage }.getOrNull()
+        val dialers = runCatching {
+            pm.queryIntentActivities(android.content.Intent(android.content.Intent.ACTION_DIAL), 0).map { it.activityInfo.packageName }.distinct().map { label(it) }
+        }.getOrDefault(emptyList())
+        val dial = "\n기본 전화앱: " + label(defDialer) + (if (dialers.isNotEmpty()) "\n깔린 전화앱: " + dialers.joinToString(", ") else "")
         val crash = p.getString("crash", "") ?: ""
-        return head + "\n\n" + (p.getString("diag", "") ?: "") + (if (crash.isNotEmpty()) "\n\n[마지막 오류]\n" + crash.take(1500) else "")
+        return head + dial + "\n\n" + (p.getString("diag", "") ?: "") + (if (crash.isNotEmpty()) "\n\n[마지막 오류]\n" + crash.take(1500) else "")
     }
 
     fun reportDiag(c: Context) {

@@ -98,6 +98,32 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
     ];
     if (missing.isEmpty) return;
     final p = await SharedPreferences.getInstance();
+    // 처음엔 '확인 창' 권한부터 바로 받기 (켜면 통화 후 알림 대신 팝업 창이 바로 떠요)
+    if (s['overlay'] != true && p.getBool('overlay_ask_off') != true) {
+      final c0 = navKey.currentState?.overlay?.context;
+      if (c0 == null || !mounted) return;
+      _nagOpen = true;
+      final r = await showDialog<String>(
+        context: c0,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          title: const Text('🪟 확인 창 권한 켜기'),
+          content: const Text('통화가 끝나면 알림줄이 아니라 화면 가운데에 "콜백문자를 보내시겠습니까?" 창이 바로 떠요. '
+              '[보내기] 한 번이면 문자가 나가고, 전화가 올 때 고객 메모창도 이 권한으로 떠요.\n\n'
+              '[지금 켜기]를 누르면 설정 화면이 열려요. 목록에서 코디야 스위치를 켜고 뒤로 가기를 눌러 주세요.\n\n'
+              '(스위치가 회색이면: 앱 정보 → 오른쪽 위 ⋮ → [제한된 설정 허용] 후 다시)'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, 'off'), child: const Text('안 쓸래요')),
+            TextButton(onPressed: () => Navigator.pop(ctx, 'later'), child: const Text('나중에')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, 'go'), child: const Text('지금 켜기')),
+          ],
+        ),
+      );
+      _nagOpen = false;
+      if (r == 'off') await p.setBool('overlay_ask_off', true);
+      if (r == 'go') await CallbackBridge.call('requestOverlay');
+      return; // 나머지 설정은 다음에 앱을 열 때 이어서 안내
+    }
     if (p.getBool('setup_nag_off') == true) return;
     final last = p.getInt('setup_nag_at') ?? 0;
     final now = DateTime.now().millisecondsSinceEpoch;

@@ -130,7 +130,7 @@ object MemoPopup {
         onRingingNow(app, num)
     }
 
-    private const val MEMO_CH = "call_memo2" // 소리·진동 없는 채널 (벨소리와 안 겹치게)
+    private const val MEMO_CH = "call_memo3" // 소리·진동·위에 뜨는 배너 없이 알림 목록에만 (전화 팝업을 가리지 않게)
     /** 확인 창 권한이 없을 때: 지난 메모를 맨 위 알림으로 (백그라운드에서) */
     private fun notifyMemo(app: Context, num: String) {
         val key = CallbackStore.memoKey(num)
@@ -150,12 +150,14 @@ object MemoPopup {
         val none = d != null && sb.isEmpty() && name.isEmpty()
         val text = if (d == null) CallbackStore.mask(num) + " · 메모를 불러오지 못했어요 (끊으면 메모창에서 다시 확인)" else if (sb.isEmpty()) CallbackStore.mask(num) + (if (calls > 1) " · 통화 ${calls}번" else "") + " · 끊으면 메모창에서 남겨보세요" else sb.toString().trim()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val ch = android.app.NotificationChannel(MEMO_CH, "전화 메모 (통화 중)", android.app.NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "전화가 올 때 그 고객의 지난 메모를 위쪽 알림으로 보여줘요"
+            val ch = android.app.NotificationChannel(MEMO_CH, "전화 메모 (통화 중)", android.app.NotificationManager.IMPORTANCE_DEFAULT).apply {
+                description = "전화가 올 때 그 고객의 지난 메모를 알림 목록에 보여줘요 (통화 중 화면 위를 쓸어내려 확인)"
                 setSound(null, null); enableVibration(false)
                 lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
             }
-            app.getSystemService(android.app.NotificationManager::class.java).createNotificationChannel(ch)
+            val nm = app.getSystemService(android.app.NotificationManager::class.java)
+            nm.createNotificationChannel(ch)
+            runCatching { nm.deleteNotificationChannel("call_memo"); nm.deleteNotificationChannel("call_memo2") } // 예전 채널 정리
         }
         val open = app.packageManager.getLaunchIntentForPackage(app.packageName)?.apply {
             putExtra("open_url", "codiya://callback") // 앱의 콜백문자·통화 감지 화면
@@ -169,7 +171,7 @@ object MemoPopup {
                 else "📒 " + (if (name.isNotEmpty()) "$name · " else "") + CallbackStore.mask(num) + (if (calls > 1) "  ·  통화 ${calls}번" else ""))
             .setContentText(text)
             .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText(text))
-            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_MAX)
+            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(androidx.core.app.NotificationCompat.CATEGORY_MESSAGE)
             .setVisibility(androidx.core.app.NotificationCompat.VISIBILITY_PUBLIC)
             .setOnlyAlertOnce(true)
@@ -195,7 +197,27 @@ object MemoPopup {
         CallbackStore.addRecent(app, num)
         CallbackStore.diag(app, "☎ 전화 옴 " + CallbackStore.mask(num) + " · 위쪽 알림에 메모 표시 (끊으면 메모창)")
         Thread { runCatching { notifyMemo(app, num) } }.start()
+        // 휴대폰 전화 알림을 '간단한 팝업'(위쪽)으로 해 두면, 메모창을 가운데 아래에 같이 띄울 수 있어요
+        main.post {
+            if (curKey == key && root != null) return@post
+            runCatching { show(app, num, key, ringing = true) }.onFailure { root = null; curKey = "" }
+        }
+        Thread {
+            val j = CallbackStore.memoGet(app, key, CallbackStore.mask(num), call = false)
+            if (j != null && !j.optBoolean("off")) main.post { if (curKey == key) { data = j; runCatching { render(app) } } }
+        }.start()
         Thread { CallbackStore.fetchConfig(app) }.start() // 다음 전화 대비 설정 새로고침
+    }
+
+    /** 끊은 뒤: 울릴 때 띄운 작은 메모창을 위로 올리고 쓰기 칸 펼치기 */
+    private fun expandAfterCall(c: Context) {
+        val r = root ?: return
+        val p = params ?: return
+        ringMode = false
+        editBox?.visibility = View.VISIBLE
+        if (small) setSmall(c, false)
+        p.y = dp(c, 36f)
+        runCatching { (c.getSystemService(Context.WINDOW_SERVICE) as WindowManager).updateViewLayout(r, p) }
     }
 
     /** 끊었을 때: 그 번호 메모창 (지난 메모 + 새로 쓰기). 못 띄우면 알림을 그대로 둠 */
@@ -211,7 +233,10 @@ object MemoPopup {
         if (num.isEmpty() || !enabled(app)) return
         val key = CallbackStore.memoKey(num)
         if (key.isEmpty()) return
-        if (!(curKey == key && root != null)) {
+        if (curKey == key && root != null) {
+            expandAfterCall(app)
+            CallbackStore.diag(app, "☎ 통화 끝 " + CallbackStore.mask(num) + " · ✅ 메모창 펼침")
+        } else {
             val ok = runCatching { show(app, num, key) }
             if (ok.isFailure) {
                 root = null; curKey = ""
@@ -231,7 +256,9 @@ object MemoPopup {
     }
 
     @SuppressLint("ClickableViewAccessibility")
-    private fun show(c: Context, num: String, key: String) {
+    private var ringMode = false
+
+    private fun show(c: Context, num: String, key: String, ringing: Boolean = false) {
         val wm = c.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         if (root != null) { // 다른 번호(통화 중 대기 전화): 적던 메모는 먼저 저장하고 바꿈
             saveDraft(c)
@@ -293,7 +320,7 @@ object MemoPopup {
             isScrollbarFadingEnabled = false            // 오른쪽 스크롤 막대가 늘 보여서 어디쯤인지 알 수 있게
             scrollBarStyle = View.SCROLLBARS_INSIDE_INSET
         }
-        val maxH = (c.resources.displayMetrics.heightPixels * 0.36).toInt()
+        val maxH = (c.resources.displayMetrics.heightPixels * (if (ringing) 0.28 else 0.36)).toInt() // 울릴 땐 작게 (전화 팝업과 같이 보이게)
         body.addView(sc, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(c, 8f) })
         sc.viewTreeObserver.addOnGlobalLayoutListener {
             if (sc.height > maxH) sc.layoutParams = (sc.layoutParams as LinearLayout.LayoutParams).apply { height = maxH }
@@ -354,9 +381,11 @@ object MemoPopup {
                 WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED,
             PixelFormat.TRANSLUCENT).apply {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            y = dp(c, 36f)
+            // 울릴 땐 화면 가운데보다 조금 아래 (위쪽 '간단한 전화 팝업'과 겹치지 않게), 끊은 뒤엔 위로
+            y = if (ringing) (c.resources.displayMetrics.heightPixels * 0.40).toInt() else dp(c, 36f)
         }
         params = p
+        ringMode = ringing
 
         // 끌어서 위아래로 옮기기 (머리 · 작은 띠)
         var downY = 0f; var startY = 0; var moved = false
@@ -389,6 +418,7 @@ object MemoPopup {
         }
         nameEt?.setOnTouchListener(focusOn)
 
+        if (ringing) editBox?.visibility = View.GONE // 울릴 땐 지난 메모만 (쓰기 칸은 끊은 뒤 펼침)
         wm.addView(r, p)
         root = r
         PermWatch.markOverlayOk(c)

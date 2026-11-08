@@ -236,6 +236,21 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
                         const Text('🔎 최근 통화 감지 기록', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5)),
                         const SizedBox(height: 6),
                         Text(_s['diag'].toString(), style: const TextStyle(fontSize: 13, height: 1.6, color: Color(0xFF3B4850))),
+                        if (!_overlay) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(color: const Color(0xFFFFF4E5), borderRadius: BorderRadius.circular(12)),
+                            child: const Text(
+                              '🪟 지금은 "확인 창" 권한이 꺼져 있어서 통화가 끝나면 알림줄로만 알려줘요.\n'
+                              '아래 버튼을 눌러 코디야 스위치를 켜면, 알림을 누를 필요 없이 화면 가운데 "콜백문자를 보내시겠습니까?" 창이 바로 떠서 [보내기] 한 번이면 끝나요.\n'
+                              '(스위치가 회색이면: 앱 정보 → 오른쪽 위 ⋮ → [제한된 설정 허용] 후 다시)',
+                              style: TextStyle(fontSize: 13, height: 1.6, color: Color(0xFF7A4B00)),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          _btn('🪟 확인 창 권한 켜기', coral, () => CallbackBridge.call('requestOverlay')),
+                        ],
                       ]),
                     ),
                   ],

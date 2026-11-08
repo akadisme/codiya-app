@@ -111,7 +111,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
       builder: (ctx) => AlertDialog(
         title: const Text('📒 전화 메모창 · 📨 콜백문자 켜기'),
         content: Text('전화가 오면 고객 메모를 띄우고, 끊으면 콜백문자를 보내려면 휴대폰 설정이 필요해요.\n\n'
-            '아직 안 된 것: ${missing.join(', ')}\n\n[지금 설정하기]를 누르고 차례로 켜 주세요. 1분이면 끝나요.'),
+            '아직 안 된 것: ${missing.join(', ')}\n\n[지금 설정하기]를 누르고 차례로 켜 주세요. 1분이면 끝나요.\n\n💡 켠 뒤 "코디야가 다른 앱 위에 표시 중" 알림이 뜨면, 그 알림을 길게 눌러 [알림 끄기]를 하세요.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, 'off'), child: const Text('그만 보기')),
           TextButton(onPressed: () => Navigator.pop(ctx, 'later'), child: const Text('나중에')),

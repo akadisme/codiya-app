@@ -202,7 +202,7 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
                       await CallbackBridge.call('openAppSettings');
                     }
                   }),
-                  _step(3, '통화 후 확인 창 띄우기', '"다른 앱 위에 표시"에서 코디야를 켜주세요. 통화가 끝나면 화면 가운데 "콜백문자를 보내시겠습니까?" 창이 떠요. (끄면 알림줄로 알려줘요)',
+                  _step(3, '통화 후 확인 창 띄우기', '"다른 앱 위에 표시"에서 코디야를 켜주세요. 통화가 끝나면 화면 가운데 "콜백문자를 보내시겠습니까?" 창이 떠요. (끄면 알림줄로 알려줘요)\n\n💡 창이 떠 있는 동안 휴대폰이 "코디야가 다른 앱 위에 표시 중" 알림을 띄워요. 그 알림을 길게 눌러 [알림 끄기]를 하면 다시 안 떠요 (창은 그대로 잘 떠요)',
                       _overlay, '🪟 확인 창 켜기', coral, () => CallbackBridge.call('requestOverlay')),
                   _step(4, '📒 전화 메모창', '전화가 오면 받기 전에 그 고객의 지난 메모·AI 요약이 화면 위에 떠요. 저장된 연락처도 보이게 "통화 기록"(번호 확인만)과 🎤 말로 메모용 "마이크"를 허용해주세요.',
                       _s['calllog'] == true && _s['mic'] == true, '📒 메모창 켜기', gold, () async {

@@ -68,6 +68,30 @@ object MemoPopup {
     private var micTv: TextView? = null
     private var editBox: LinearLayout? = null
 
+    // ---------- 통화가 끝난 뒤 3분 동안 아무것도 안 쓰면 자동으로 닫기 ----------
+    private var autoCloseKey = ""
+    private var lastTyped = 0L
+    private const val AUTO_CLOSE_MS = 3 * 60 * 1000L
+
+    /** 통화가 끝났을 때 (부재중 포함) */
+    fun onCallEnded(c: Context) {
+        val app = c.applicationContext
+        main.post {
+            val key = curKey
+            if (root == null || key.isEmpty()) return@post
+            autoCloseKey = key
+            main.postDelayed({ tryAutoClose(app, key) }, AUTO_CLOSE_MS)
+        }
+    }
+
+    private fun tryAutoClose(c: Context, key: String) {
+        if (root == null || curKey != key || autoCloseKey != key) return
+        val typing = (memoEt?.text?.isNotBlank() == true) || memoEt?.hasFocus() == true || nameEt?.hasFocus() == true
+        val recent = System.currentTimeMillis() - lastTyped < AUTO_CLOSE_MS
+        if (typing || recent) { main.postDelayed({ tryAutoClose(c, key) }, 60_000L); return } // 쓰는 중이면 1분 뒤 다시 확인
+        close(c)
+    }
+
     /** 메모 쓰기 칸 열기/닫기 (받기 전엔 닫혀 있어서 창이 작아요) */
     private fun showEdit(c: Context, on: Boolean) {
         editBox?.visibility = if (on) View.VISIBLE else View.GONE
@@ -206,6 +230,11 @@ object MemoPopup {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 14.5f)
             background = round(c, 0xFFF5F7F8.toInt(), 12f); setPadding(dp(c, 12f), dp(c, 9f), dp(c, 12f), dp(c, 9f))
         }
+        memoEt?.addTextChangedListener(object : android.text.TextWatcher {
+            override fun afterTextChanged(e: android.text.Editable?) { lastTyped = System.currentTimeMillis() }
+            override fun beforeTextChanged(a: CharSequence?, b: Int, c2: Int, d: Int) {}
+            override fun onTextChanged(a: CharSequence?, b: Int, c2: Int, d: Int) {}
+        })
         edit.addView(memoEt, lp(8f))
         val btns = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL }
         micTv = tv("🎤 말로 메모", 14.5f, SKY, true).apply {

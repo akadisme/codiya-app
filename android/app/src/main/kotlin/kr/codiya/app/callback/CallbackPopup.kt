@@ -96,6 +96,7 @@ object CallbackPopup {
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN, PixelFormat.TRANSLUCENT
         )
         wm.addView(root, params)
+        PermWatch.markOverlayOk(c)
         current = root
         root.requestFocus()
         // 에이닷·T전화처럼 통화 후 자기 화면을 띄우는 전화앱보다 앞에 오게 몇 번 다시 올림

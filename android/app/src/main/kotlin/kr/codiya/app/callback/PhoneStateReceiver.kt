@@ -42,6 +42,7 @@ class PhoneStateReceiver : BroadcastReceiver() {
             TelephonyManager.EXTRA_STATE_IDLE -> {
                 // 모든 통화가 끝났을 때 한 번만 옴 (같은 알림이 두 번 와도 한 번만 처리)
                 p.edit().putString("ph", "idle").putBoolean("ph_wait", false).apply()
+                Thread { PermWatch.check(context.applicationContext) }.start() // 권한이 꺼졌으면 알림 (12시간에 한 번)
                 MemoPopup.onCallEnded(context) // 3분 동안 아무것도 안 쓰면 메모창 자동으로 닫기
                 if (ph != "ringing" && ph != "talking") { if (ph == "outgoing") CallbackStore.takeCallNums(context); return }
                 val missed = ph == "ringing"

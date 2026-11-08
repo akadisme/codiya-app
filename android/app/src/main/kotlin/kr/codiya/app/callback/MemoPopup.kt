@@ -360,6 +360,7 @@ object MemoPopup {
 
         wm.addView(r, p)
         root = r
+        PermWatch.markOverlayOk(c)
         CallbackStore.diag(c, "☎ 메모창 화면에 띄움 ✅" + (if (!CallbackPopup.canShow(c)) " (확인 창 권한 꺼짐 상태)" else ""))
         runCatching { render(c) }
         // 에이닷·T전화 같은 전화앱이 자기 화면을 나중에 띄우면 메모창이 뒤로 숨어서, 맨 앞으로 몇 번 다시 올려요

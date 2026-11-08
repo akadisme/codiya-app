@@ -22,6 +22,8 @@ class MainActivity : FlutterActivity() {
         CallbackStore.installCrashLog(this)
         pendingOpen = intent?.getStringExtra("open_url")
         super.onCreate(savedInstanceState)
+        val app = applicationContext
+        Thread { kr.codiya.app.callback.PermWatch.check(app) }.start()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -101,7 +103,7 @@ class MainActivity : FlutterActivity() {
             "calllog" to (checkSelfPermission(Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED),
             "mic" to (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED),
             "memo" to (cfg?.optBoolean("memo", false) ?: false),
-            "overlay" to kr.codiya.app.callback.CallbackPopup.canShow(this),
+            "overlay" to (kr.codiya.app.callback.PermWatch.states(this)["확인 창(다른 앱 위에 표시)"] == true),
             "crash" to (CallbackStore.prefs(this).getString("crash", "") ?: ""),
             "linked" to (cfg?.optBoolean("linked", false) ?: false),
             "plan" to (cfg?.optString("plan", "") ?: ""),

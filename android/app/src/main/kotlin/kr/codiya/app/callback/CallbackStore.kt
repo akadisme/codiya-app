@@ -48,7 +48,7 @@ object CallbackStore {
     fun diag(c: Context, msg: String) {
         val t = SimpleDateFormat("MM/dd HH:mm", Locale.KOREA).format(Date())
         val old = prefs(c).getString("diag", "") ?: ""
-        val lines = ("$t  $msg\n" + old).lines().filter { it.isNotBlank() }.take(5)
+        val lines = ("$t  $msg\n" + old).lines().filter { it.isNotBlank() }.take(8)
         prefs(c).edit().putString("diag", lines.joinToString("\n")).apply()
     }
 

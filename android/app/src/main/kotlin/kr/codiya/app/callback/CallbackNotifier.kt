@@ -30,8 +30,8 @@ object CallbackNotifier {
 
     private fun inTime(cfg: JSONObject): Boolean {
         val now = Calendar.getInstance().let { "%02d:%02d".format(it.get(Calendar.HOUR_OF_DAY), it.get(Calendar.MINUTE)) }
-        val from = cfg.optString("time_from", "09:00")
-        val to = cfg.optString("time_to", "20:00")
+        val from = cfg.optString("time_from", "08:00")
+        val to = cfg.optString("time_to", "21:00")
         return now >= from && now < to
     }
 

@@ -22,6 +22,7 @@ class PhoneStateReceiver : BroadcastReceiver() {
             @Suppress("DEPRECATION")
             val inc = CallbackStore.digits(intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER))
             if (inc.length >= 8) MemoPopup.onRinging(context, inc)
+            else if (p.getString("ph", "idle") != "ringing") CallbackStore.diag(context, "📒 전화 옴 · 번호를 못 받음 (휴대폰 설정 → 앱 → 코디야 → 권한 → '통화 기록' 허용 필요)")
         }
         when (state) {
             TelephonyManager.EXTRA_STATE_RINGING ->

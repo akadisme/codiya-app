@@ -195,22 +195,15 @@ object MemoPopup {
             lastKey = key; lastAt = now
         }
         CallbackStore.addRecent(app, num)
-        CallbackStore.diag(app, "☎ 전화 옴 " + CallbackStore.pretty(num) + " · 가운데 아래 작은 메모창 (끊으면 펼침)")
-        // 휴대폰 전화 알림을 '간단한 팝업'(위쪽)으로 해 두면, 메모창을 가운데 아래에 같이 띄울 수 있어요
-        // 알림은 메모창을 못 띄웠을 때만 (대신 보여주기)
-        main.post {
-            if (curKey == key && root != null) return@post
-            runCatching { show(app, num, key, ringing = true) }.onFailure {
-                root = null; curKey = ""
-                CallbackStore.diag(app, "☎ 전화 옴 " + CallbackStore.pretty(num) + " · 메모창을 못 띄워 알림으로 (" + it.javaClass.simpleName + ")")
-                Thread { runCatching { notifyMemo(app, num) } }.start()
-            }
-        }
-        Thread {
-            val j = CallbackStore.memoGet(app, key, CallbackStore.mask(num), call = false)
-            if (j != null && !j.optBoolean("off")) main.post { if (curKey == key) { data = j; runCatching { render(app) } } }
-        }.start()
+        // 받기 전엔 아무것도 띄우지 않음 (삼성 수신 화면이 다른 앱 창을 막음) → 받은 전화가 끝나면 메모창
+        CallbackStore.diag(app, "☎ 전화 옴 " + CallbackStore.pretty(num) + " · 받은 전화면 끊은 뒤 메모창")
         Thread { CallbackStore.fetchConfig(app) }.start() // 다음 전화 대비 설정 새로고침
+    }
+
+    /** 부재중·내가 건 전화: 기억해 둔 번호만 지움 (메모창 안 띄움) */
+    fun clearPending(c: Context) {
+        pendNum = ""
+        CallbackStore.prefs(c.applicationContext).edit().remove("memo_pend").apply()
     }
 
     /** 끊은 뒤: 울릴 때 띄운 작은 메모창을 위로 올리고 쓰기 칸 펼치기 */
@@ -253,7 +246,7 @@ object MemoPopup {
         }
         runCatching { androidx.core.app.NotificationManagerCompat.from(app).cancel(7800) }
         Thread {
-            val j = CallbackStore.memoGet(app, key, CallbackStore.mask(num), call = false)
+            val j = CallbackStore.memoGet(app, key, CallbackStore.mask(num), call = true) // 받은 통화 1번 세기
             if (j != null && !j.optBoolean("off")) main.post { if (curKey == key) { data = j; runCatching { render(app) } } }
             else if (j != null && j.optBoolean("off")) main.post { if (curKey == key) close(app) }
         }.start()

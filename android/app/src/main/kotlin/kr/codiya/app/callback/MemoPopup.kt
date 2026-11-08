@@ -1,0 +1,385 @@
+package kr.codiya.app.callback
+
+import android.Manifest
+import android.annotation.SuppressLint
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.Color
+import android.graphics.PixelFormat
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
+import android.os.Build
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import android.text.InputType
+import android.util.TypedValue
+import android.view.Gravity
+import android.view.MotionEvent
+import android.view.View
+import android.view.ViewGroup
+import android.view.WindowManager
+import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
+import android.widget.Toast
+import org.json.JSONObject
+
+/**
+ * 📒 전화 메모창: 전화가 울리면 받기 전에 화면 위쪽에 떠요
+ *  · 이름 + 날짜별 기록(최근 것 위, 길면 드래그로 스크롤) + 새 메모 + 🎤 음성 메모
+ *  · [작게] → 한 줄 띠로 줄어듦 · 위아래로 끌어서 옮김 · [✕] 닫기
+ *  · 전화 받기 버튼을 가리지 않게 창 밖 터치는 그대로 통과
+ */
+object MemoPopup {
+    private const val GOLD = 0xFF0AA394.toInt()
+    private const val GOLD2 = 0xFF2CC2B0.toInt()
+    private const val INK = 0xFF0F181D.toInt()
+    private const val MUTE = 0xFF5B6870.toInt()
+    private const val SKY = 0xFF3A86D8.toInt()
+
+    private val main = Handler(Looper.getMainLooper())
+    private var root: FrameLayout? = null
+    private var params: WindowManager.LayoutParams? = null
+    private var curNum = ""
+    private var curKey = ""
+    private var data: JSONObject? = null
+    private var small = false
+    private var voiceUsed = false
+    private var rec: SpeechRecognizer? = null
+    @Volatile private var lastKey = ""
+    @Volatile private var lastAt = 0L
+
+    // 화면 조각
+    private var nameEt: EditText? = null
+    private var memoEt: EditText? = null
+    private var histBox: LinearLayout? = null
+    private var titleTv: TextView? = null
+    private var subTv: TextView? = null
+    private var bodyBox: LinearLayout? = null
+    private var smallTv: TextView? = null
+    private var micTv: TextView? = null
+
+    private fun dp(c: Context, v: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, c.resources.displayMetrics).toInt()
+    private fun round(c: Context, color: Int, r: Float) = GradientDrawable().apply { setColor(color); cornerRadius = dp(c, r).toFloat() }
+    private fun grad(c: Context, a: Int, b: Int, r: Float) = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(a, b)).apply { cornerRadius = dp(c, r).toFloat() }
+
+    /** 메모창 쓸 수 있는 상태인지 (권한·설정) */
+    fun enabled(c: Context): Boolean {
+        if (!CallbackPopup.canShow(c)) return false
+        val cfg = CallbackStore.cachedConfig(c) ?: return false
+        if (cfg.has("allowed") && !cfg.optBoolean("allowed")) return false
+        return cfg.optBoolean("memo", false)
+    }
+
+    /** 전화가 울릴 때 (어느 스레드에서 불러도 됨) */
+    fun onRinging(c: Context, num: String) {
+        val app = c.applicationContext
+        if (num.length < 8 || !enabled(app)) return
+        val key = CallbackStore.memoKey(num)
+        if (key.isEmpty()) return
+        synchronized(this) { // 같은 전화로 두 번 불려도 한 번만 (전화 상태 · 번호 확인)
+            val now = System.currentTimeMillis()
+            if (key == lastKey && now - lastAt < 90_000L) return
+            lastKey = key; lastAt = now
+        }
+        CallbackStore.addRecent(app, num)
+        main.post {
+            if (curKey == key && root != null) return@post // 같은 번호 두 번 알림
+            runCatching { show(app, num, key) }
+        }
+        Thread {
+            val j = CallbackStore.memoGet(app, key, CallbackStore.mask(num), call = true)
+            if (j != null && !j.optBoolean("off")) main.post { if (curKey == key) { data = j; render(app) } }
+            else if (j != null && j.optBoolean("off")) main.post { if (curKey == key) close(app) }
+        }.start()
+        // 설정 새로고침 (다음 전화 대비)
+        Thread { CallbackStore.fetchConfig(app) }.start()
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    private fun show(c: Context, num: String, key: String) {
+        val wm = c.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        if (root != null) { // 다른 번호(통화 중 대기 전화): 적던 메모는 먼저 저장하고 바꿈
+            saveDraft(c)
+            runCatching { wm.removeView(root) }
+            root = null
+        }
+        curNum = num; curKey = key; small = false; voiceUsed = false
+        data = CallbackStore.memoCached(c, key)
+
+        val r = FrameLayout(c)
+        val card = LinearLayout(c).apply {
+            orientation = LinearLayout.VERTICAL
+            background = round(c, Color.WHITE, 20f)
+            elevation = dp(c, 10f).toFloat()
+            setPadding(dp(c, 14f), dp(c, 12f), dp(c, 14f), dp(c, 12f))
+        }
+        fun tv(s: String, size: Float, color: Int, bold: Boolean = false) = TextView(c).apply {
+            text = s; setTextSize(TypedValue.COMPLEX_UNIT_SP, size); setTextColor(color); setLineSpacing(0f, 1.25f)
+            if (bold) typeface = Typeface.DEFAULT_BOLD
+        }
+        fun chip(s: String, bg: Int, fg: Int) = tv(s, 13f, fg, true).apply {
+            gravity = Gravity.CENTER; background = round(c, bg, 10f); setPadding(dp(c, 10f), dp(c, 6f), dp(c, 10f), dp(c, 6f))
+        }
+        val lp = { top: Float -> LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(c, top) } }
+
+        // 머리 (끌어서 옮기기)
+        val head = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        val titles = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
+        titleTv = tv("📒 불러오는 중…", 16f, INK, true)
+        subTv = tv(CallbackStore.mask(num), 12.5f, MUTE)
+        titles.addView(titleTv); titles.addView(subTv)
+        head.addView(titles, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        val minBtn = chip("작게", 0xFFEEF2F3.toInt(), 0xFF3B4850.toInt()).apply { setOnClickListener { setSmall(c, true) } }
+        val xBtn = chip("✕", 0xFFEEF2F3.toInt(), 0xFF3B4850.toInt()).apply { setOnClickListener { saveDraft(c); close(c) } }
+        head.addView(minBtn); head.addView(xBtn, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(c, 6f) })
+        card.addView(head)
+
+        // 몸통
+        val body = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
+        bodyBox = body
+        nameEt = EditText(c).apply {
+            hint = "이름 (예: 김OO 34평 관심)"; setSingleLine(true); setTextSize(TypedValue.COMPLEX_UNIT_SP, 14.5f)
+            background = round(c, 0xFFF5F7F8.toInt(), 12f); setPadding(dp(c, 12f), dp(c, 9f), dp(c, 12f), dp(c, 9f))
+        }
+        body.addView(nameEt, lp(10f))
+        histBox = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
+        val sc = ScrollView(c).apply { addView(histBox); isVerticalScrollBarEnabled = true }
+        val maxH = (c.resources.displayMetrics.heightPixels * 0.30).toInt()
+        body.addView(sc, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(c, 8f) })
+        sc.viewTreeObserver.addOnGlobalLayoutListener {
+            if (sc.height > maxH) sc.layoutParams = (sc.layoutParams as LinearLayout.LayoutParams).apply { height = maxH }
+        }
+        memoEt = EditText(c).apply {
+            hint = "새 메모 (통화 내용·약속 등)"; minLines = 2; maxLines = 5
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14.5f)
+            background = round(c, 0xFFF5F7F8.toInt(), 12f); setPadding(dp(c, 12f), dp(c, 9f), dp(c, 12f), dp(c, 9f))
+        }
+        body.addView(memoEt, lp(8f))
+        val btns = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL }
+        micTv = tv("🎤 말로 메모", 14.5f, SKY, true).apply {
+            gravity = Gravity.CENTER; background = round(c, 0xFFE6F0FB.toInt(), 12f); setPadding(0, dp(c, 11f), 0, dp(c, 11f))
+            setOnClickListener { voice(c) }
+        }
+        val save = tv("💾 저장", 14.5f, Color.WHITE, true).apply {
+            gravity = Gravity.CENTER; background = grad(c, GOLD2, GOLD, 12f); setPadding(0, dp(c, 11f), 0, dp(c, 11f))
+            setOnClickListener { save(c) }
+        }
+        btns.addView(micTv, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { rightMargin = dp(c, 8f) })
+        btns.addView(save, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        body.addView(btns, lp(8f))
+        card.addView(body)
+
+        // 작게 보기 (한 줄 띠)
+        smallTv = tv("", 14f, Color.WHITE, true).apply {
+            background = grad(c, GOLD2, GOLD, 99f); setPadding(dp(c, 16f), dp(c, 10f), dp(c, 16f), dp(c, 10f))
+            visibility = View.GONE; maxLines = 1
+        }
+
+        r.addView(card, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        r.addView(smallTv, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL))
+
+        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                   else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
+        val w = minOf(c.resources.displayMetrics.widthPixels - dp(c, 20f), dp(c, 460f))
+        val p = WindowManager.LayoutParams(w, ViewGroup.LayoutParams.WRAP_CONTENT, type,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED,
+            PixelFormat.TRANSLUCENT).apply {
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            y = dp(c, 36f)
+        }
+        params = p
+
+        // 끌어서 위아래로 옮기기 (머리 · 작은 띠)
+        var downY = 0f; var startY = 0; var moved = false
+        val drag = View.OnTouchListener { v, e ->
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> { downY = e.rawY; startY = p.y; moved = false; false }
+                MotionEvent.ACTION_MOVE -> {
+                    val dy = (e.rawY - downY).toInt()
+                    if (Math.abs(dy) > dp(c, 6f)) moved = true
+                    if (moved) {
+                        p.y = (startY + dy).coerceIn(0, c.resources.displayMetrics.heightPixels - dp(c, 80f))
+                        runCatching { wm.updateViewLayout(r, p) }
+                    }
+                    moved
+                }
+                MotionEvent.ACTION_UP -> { if (!moved && v === smallTv) setSmall(c, false); moved }
+                else -> false
+            }
+        }
+        head.setOnTouchListener(drag)
+        smallTv?.setOnTouchListener(drag)
+
+        // 글 쓸 때만 키보드 받기 (평소엔 전화 화면 조작을 막지 않음)
+        val focusOn = View.OnTouchListener { _, e ->
+            if (e.actionMasked == MotionEvent.ACTION_DOWN) setFocusable(c, true)
+            false
+        }
+        nameEt?.setOnTouchListener(focusOn)
+        memoEt?.setOnTouchListener(focusOn)
+
+        wm.addView(r, p)
+        root = r
+        render(c)
+    }
+
+    private fun setFocusable(c: Context, on: Boolean) {
+        val r = root ?: return
+        val p = params ?: return
+        val wm = c.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        p.flags = if (on) p.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+                  else p.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        p.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+        runCatching { wm.updateViewLayout(r, p) }
+        if (!on) (c.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(r.windowToken, 0)
+    }
+
+    private fun setSmall(c: Context, on: Boolean) {
+        small = on
+        val r = root ?: return
+        (r.getChildAt(0)).visibility = if (on) View.GONE else View.VISIBLE
+        smallTv?.visibility = if (on) View.VISIBLE else View.GONE
+        if (on) setFocusable(c, false)
+        render(c)
+    }
+
+    private fun kindLabel(k: String) = when (k) {
+        "ai", "share" -> "🤖 AI 요약"
+        "voice" -> "🎤 음성 메모"
+        else -> "✏️ 메모"
+    }
+
+    private fun render(c: Context) {
+        val d = data
+        val name = d?.optString("name", "") ?: ""
+        val items = d?.optJSONArray("items")
+        val n = items?.length() ?: 0
+        val calls = d?.optInt("calls", 0) ?: 0
+        titleTv?.text = when {
+            d == null -> "📒 불러오는 중…"
+            name.isNotEmpty() -> "📒 $name"
+            n == 0 && calls <= 1 -> "📒 처음 온 번호"
+            else -> "📒 이름 없음"
+        }
+        subTv?.text = CallbackStore.mask(curNum) + (if (calls > 0) " · 통화 ${calls}번" else "") +
+            (d?.optString("last_at")?.takeIf { it.isNotEmpty() && calls > 1 }?.let { " · 지난 통화 " + it.substring(5) } ?: "")
+        if (nameEt?.hasFocus() != true && name.isNotEmpty() && nameEt?.text.isNullOrEmpty()) nameEt?.setText(name)
+        smallTv?.text = "📒 " + (if (name.isNotEmpty()) name else CallbackStore.mask(curNum)) + (if (n > 0) " · 메모 $n" else "") + "  ▾"
+
+        val box = histBox ?: return
+        box.removeAllViews()
+        if (d != null && n == 0) {
+            box.addView(TextView(c).apply { text = "아직 메모가 없어요. 아래에 적거나 🎤로 말해 두면 다음 전화 때 여기 떠요."; setTextColor(MUTE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f) })
+        }
+        for (i in 0 until n) {
+            val m = items!!.optJSONObject(i) ?: continue
+            val row = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(c, 6f), 0, dp(c, 8f)) }
+            row.addView(TextView(c).apply {
+                text = m.optString("at") + "  " + kindLabel(m.optString("kind"))
+                setTextColor(if (m.optString("kind") == "ai" || m.optString("kind") == "share") SKY else GOLD)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f); typeface = Typeface.DEFAULT_BOLD
+            })
+            row.addView(TextView(c).apply {
+                text = m.optString("body"); setTextColor(0xFF1B262C.toInt()); setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f); setLineSpacing(0f, 1.3f)
+            })
+            if (i < n - 1) row.addView(View(c).apply { setBackgroundColor(0xFFDDE3E6.toInt()) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1).apply { topMargin = dp(c, 8f) })
+            box.addView(row)
+        }
+    }
+
+    /** 저장: 이름이 바뀌었으면 이름도, 새 메모가 있으면 기록 추가 */
+    private fun save(c: Context, closeAfter: Boolean = false) {
+        val key = curKey; val num = curNum
+        if (key.isEmpty()) return
+        val name = nameEt?.text?.toString()?.trim() ?: ""
+        val oldName = data?.optString("name", "") ?: ""
+        val memo = memoEt?.text?.toString()?.trim() ?: ""
+        val kind = if (voiceUsed) "voice" else "note"
+        if (memo.isEmpty() && name == oldName) { if (closeAfter) close(c) else setFocusable(c, false); return }
+        memoEt?.setText(""); voiceUsed = false
+        setFocusable(c, false)
+        if (memo.isNotEmpty() && kind == "voice") Toast.makeText(c, "🤖 AI로 정리해서 저장하는 중…", Toast.LENGTH_SHORT).show()
+        Thread {
+            val j = CallbackStore.memoAdd(c, key, CallbackStore.mask(num), if (name != oldName) name else null, memo, kind)
+            main.post {
+                if (j == null) {
+                    Toast.makeText(c, "저장하지 못했어요. 인터넷을 확인해주세요", Toast.LENGTH_SHORT).show()
+                    if (curKey == key && memo.isNotEmpty()) memoEt?.setText(memo)
+                } else {
+                    if (curKey == key) { data = j; render(c) }
+                    Toast.makeText(c, "📒 저장했어요", Toast.LENGTH_SHORT).show()
+                }
+                if (closeAfter) close(c)
+            }
+        }.start()
+    }
+
+    /** 닫거나 다른 번호로 바뀔 때 적던 메모 저장 */
+    private fun saveDraft(c: Context) {
+        val memo = memoEt?.text?.toString()?.trim() ?: ""
+        val name = nameEt?.text?.toString()?.trim() ?: ""
+        if (curKey.isEmpty() || (memo.isEmpty() && name == (data?.optString("name", "") ?: ""))) return
+        val key = curKey; val mask = CallbackStore.mask(curNum); val kind = if (voiceUsed) "voice" else "note"
+        val nm = if (name != (data?.optString("name", "") ?: "")) name else null
+        Thread { CallbackStore.memoAdd(c, key, mask, nm, memo, kind) }.start()
+    }
+
+    // ---------- 🎤 말로 메모 (휴대폰 받아쓰기 · 무료) ----------
+    private fun voice(c: Context) {
+        if (rec != null) { rec?.stopListening(); return }
+        if (c.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            Toast.makeText(c, "앱 콜백문자 설정에서 '마이크' 권한을 켜주세요", Toast.LENGTH_LONG).show(); return
+        }
+        if (!SpeechRecognizer.isRecognitionAvailable(c)) { Toast.makeText(c, "이 휴대폰은 받아쓰기를 지원하지 않아요", Toast.LENGTH_SHORT).show(); return }
+        val sr = SpeechRecognizer.createSpeechRecognizer(c)
+        rec = sr
+        micTv?.text = "⏺ 듣는 중… (누르면 끝)"
+        sr.setRecognitionListener(object : RecognitionListener {
+            override fun onResults(results: Bundle?) {
+                val t = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull() ?: ""
+                if (t.isNotEmpty()) {
+                    val cur = memoEt?.text?.toString() ?: ""
+                    memoEt?.setText(if (cur.isBlank()) t else "$cur $t")
+                    voiceUsed = true
+                }
+                end()
+            }
+            override fun onError(error: Int) {
+                Toast.makeText(c, if (error == SpeechRecognizer.ERROR_AUDIO || error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY)
+                    "통화 중에는 마이크를 쓸 수 없어요. 통화가 끝난 뒤 눌러주세요" else "잘 못 들었어요. 다시 눌러주세요", Toast.LENGTH_SHORT).show()
+                end()
+            }
+            private fun end() { runCatching { sr.destroy() }; rec = null; micTv?.text = "🎤 말로 메모" }
+            override fun onReadyForSpeech(params: Bundle?) {}
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() {}
+            override fun onPartialResults(partialResults: Bundle?) {}
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
+        sr.startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ko-KR")
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L)
+        })
+    }
+
+    fun close(c: Context) {
+        val r = root ?: return
+        runCatching { rec?.destroy() }; rec = null
+        runCatching { (c.getSystemService(Context.WINDOW_SERVICE) as WindowManager).removeView(r) }
+        root = null; curKey = ""; curNum = ""; data = null
+    }
+}

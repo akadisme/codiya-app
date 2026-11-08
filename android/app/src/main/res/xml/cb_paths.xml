@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 콜백문자: 사진 문자로 보낼 사진 (앱 캐시 안) -->
+<paths>
+    <cache-path name="cb" path="cb_img/" />
+</paths>

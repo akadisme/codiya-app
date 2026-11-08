@@ -1,0 +1,119 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 콜백문자: 통화가 끝났는지만 확인 (통화 기록·문자 권한은 쓰지 않음) -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <!-- 콜백문자: 통화 후 화면 가운데 "보내시겠습니까?" 창 -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- 📒 전화 메모창: 저장된 연락처에서 온 전화도 번호 확인 (통화 기록 내용은 읽지 않음) -->
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <!-- 📒 🎤 말로 메모 (받아쓰기) -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <application
+        android:label="코디야"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            <meta-data
+                android:name="io.flutter.embedding.android.NormalTheme"
+                android:resource="@style/NormalTheme" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- 콜백문자: 사진 문자로 보낼 사진을 문자앱에 넘겨줌 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.cbfiles"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/cb_paths" />
+        </provider>
+
+        <!-- 📒 에이닷·갤럭시 AI 통화 요약 공유 받기 -->
+        <activity
+            android:name=".callback.MemoShareActivity"
+            android:exported="true"
+            android:label="통화 메모에 저장"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+
+        <!-- 콜백문자: 문자앱 열기용 투명 화면 -->
+        <activity
+            android:name=".callback.CallbackSendActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="false"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!-- 콜백문자: 걸려온 번호 확인 (주소록에 없는 번호만, 전화는 막지 않음) -->
+        <service
+            android:name=".callback.CallScreen"
+            android:exported="true"
+            android:permission="android.permission.BIND_SCREENING_SERVICE">
+            <intent-filter>
+                <action android:name="android.telecom.CallScreeningService" />
+            </intent-filter>
+        </service>
+
+        <!-- 콜백문자: 통화 종료·부재중 감지 -->
+        <receiver
+            android:name=".callback.PhoneStateReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.PHONE_STATE" />
+            </intent-filter>
+        </receiver>
+
+        <meta-data android:name="flutterEmbedding" android:value="2" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="default" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_notify" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/brand" />
+    </application>
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="smsto" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="sms" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+            <data android:scheme="tel" />
+        </intent>
+    </queries>
+</manifest>

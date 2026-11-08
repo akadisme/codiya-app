@@ -1,0 +1,71 @@
+name: 코디야 앱 빌드
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.29.3'
+          channel: stable
+          cache: true
+
+      # 공개 저장소라서 Firebase 파일·서명 열쇠는 저장소에 두지 않고 GitHub 비밀값(Secrets)에서 꺼내 써요
+      - name: 비밀값 꺼내기 (Firebase 파일 · 서명 열쇠)
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          test -n "$GOOGLE_SERVICES_JSON" || (echo "::error::GitHub 비밀값 GOOGLE_SERVICES_JSON 이 없습니다 (Settings → Secrets and variables → Actions)" && exit 1)
+          test -n "$KEYSTORE_BASE64" || (echo "::error::GitHub 비밀값 KEYSTORE_BASE64 가 없습니다" && exit 1)
+          test -n "$KEYSTORE_PASSWORD" || (echo "::error::GitHub 비밀값 KEYSTORE_PASSWORD 가 없습니다" && exit 1)
+          printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+          echo "$KEYSTORE_BASE64" | tr -d ' \r\n' | base64 -d > android/app/upload.keystore
+
+      - run: flutter pub get
+
+      - name: APK 만들기
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          flutter build apk --release --build-number=${{ github.run_number }}
+          flutter build appbundle --release --build-number=${{ github.run_number }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codiya-app-${{ github.run_number }}
+          path: |
+            build/app/outputs/flutter-apk/app-release.apk
+            build/app/outputs/bundle/release/app-release.aab
+          retention-days: 30
+
+      # 코디야 홈페이지 [앱 받기] 가 항상 이 파일을 내려줘요 (builds 브랜치)
+      - name: 설치 파일을 builds 브랜치에 보관
+        run: |
+          VER=$(grep '^version:' pubspec.yaml | sed 's/version: *//; s/+.*//')
+          mkdir -p /tmp/out && cp build/app/outputs/flutter-apk/app-release.apk /tmp/out/codiya-app.apk
+          cp build/app/outputs/bundle/release/app-release.aab /tmp/out/codiya-app.aab
+          cd /tmp/out
+          printf '{"version":"%s","build":%s,"date":"%s"}\n' "$VER" "${{ github.run_number }}" "$(TZ=Asia/Seoul date '+%Y-%m-%d %H:%M')" > version.json
+          git init -q -b builds
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add -A && git commit -q -m "build ${{ github.run_number }} ($VER)"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" builds

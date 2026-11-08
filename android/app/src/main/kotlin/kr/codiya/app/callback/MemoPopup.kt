@@ -122,7 +122,7 @@ object MemoPopup {
             Thread {
                 CallbackStore.fetchConfig(app, 2500)
                 if (enabled(app)) main.post { onRingingNow(app, num) }
-                else CallbackStore.diag(app, "📒 전화 옴 " + CallbackStore.mask(num) + " · 메모창 꺼짐 (로그인 연결 또는 '전화 올 때 메모창 띄우기' 설정 확인)")
+                else CallbackStore.diag(app, "☎ 전화 옴 " + CallbackStore.mask(num) + " · 메모창 꺼짐 (로그인 연결 또는 '전화 올 때 메모창 띄우기' 설정 확인)")
             }.start()
             return
         }
@@ -179,13 +179,13 @@ object MemoPopup {
             lastKey = key; lastAt = now
         }
         CallbackStore.addRecent(app, num)
-        CallbackStore.diag(app, "📒 전화 옴 " + CallbackStore.mask(num) + " · 메모창 띄우는 중")
+        CallbackStore.diag(app, "☎ 전화 옴 " + CallbackStore.mask(num) + " · 메모창 띄우는 중")
         main.post {
             if (curKey == key && root != null) { if (small) setSmall(app, false); return@post } // 이미 떠 있으면 크게만
             runCatching { show(app, num, key) }.onFailure { e ->
                 // 창을 못 띄움(확인 창 권한 꺼짐 등) → 지난 메모를 알림으로라도
                 root = null; curKey = ""
-                CallbackStore.diag(app, "📒 전화 옴 " + CallbackStore.mask(num) + " · 메모창을 못 띄워 알림으로 보여줌 (" +
+                CallbackStore.diag(app, "☎ 전화 옴 " + CallbackStore.mask(num) + " · 메모창을 못 띄워 알림으로 보여줌 (" +
                     e.javaClass.simpleName + (if (!CallbackPopup.canShow(app)) " · 확인 창 권한 꺼짐" else "") + ")")
                 Thread { runCatching { notifyMemo(app, num) } }.start()
             }
@@ -360,7 +360,8 @@ object MemoPopup {
 
         wm.addView(r, p)
         root = r
-        render(c)
+        CallbackStore.diag(c, "☎ 메모창 화면에 띄움 ✅" + (if (!CallbackPopup.canShow(c)) " (확인 창 권한 꺼짐 상태)" else ""))
+        runCatching { render(c) }
         // 에이닷·T전화 같은 전화앱이 자기 화면을 나중에 띄우면 메모창이 뒤로 숨어서, 맨 앞으로 몇 번 다시 올려요
         for (ms in longArrayOf(700L, 1600L, 3000L, 5000L)) main.postDelayed({ bringFront(c, r) }, ms)
     }
@@ -370,7 +371,18 @@ object MemoPopup {
         if (editBox?.visibility == View.VISIBLE && memoEt?.hasFocus() == true) return // 글 쓰는 중엔 그대로
         val p = params ?: return
         val wm = c.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        runCatching { wm.removeViewImmediate(r); wm.addView(r, p) }
+        if (!r.isAttachedToWindow) return
+        // 지우고 다시 올리다 실패하면 창이 사라지므로: 다시 못 올리면 바로 원래대로 붙이고, 그래도 안 되면 알림으로
+        try { wm.removeViewImmediate(r) } catch (_: Exception) { return }
+        try { wm.addView(r, p) } catch (e: Exception) {
+            val ok = runCatching { wm.addView(r, p) }.isSuccess
+            if (!ok) {
+                CallbackStore.diag(c, "☎ 메모창이 다른 화면에 밀려 닫힘 (" + e.javaClass.simpleName + (if (!CallbackPopup.canShow(c)) " · 확인 창 권한 꺼짐" else "") + ") → 알림으로 보여줌")
+                val num = curNum
+                root = null; curKey = ""
+                if (num.isNotEmpty()) Thread { runCatching { notifyMemo(c.applicationContext, num) } }.start()
+            }
+        }
     }
 
     private fun setFocusable(c: Context, on: Boolean) {

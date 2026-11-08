@@ -324,7 +324,7 @@ object MemoPopup {
             isScrollbarFadingEnabled = false            // 오른쪽 스크롤 막대가 늘 보여서 어디쯤인지 알 수 있게
             scrollBarStyle = View.SCROLLBARS_INSIDE_INSET
         }
-        val maxH = (c.resources.displayMetrics.heightPixels * (if (ringing) 0.28 else 0.36)).toInt() // 울릴 땐 작게 (전화 팝업과 같이 보이게)
+        val maxH = (c.resources.displayMetrics.heightPixels * 0.36).toInt() // 울릴 때도 같은 크기 (손으로 올리며 지난 메모 보기 편하게)
         body.addView(sc, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(c, 8f) })
         sc.viewTreeObserver.addOnGlobalLayoutListener {
             if (sc.height > maxH) sc.layoutParams = (sc.layoutParams as LinearLayout.LayoutParams).apply { height = maxH }
@@ -425,6 +425,12 @@ object MemoPopup {
         if (ringing) editBox?.visibility = View.GONE // 울릴 땐 지난 메모만 (쓰기 칸은 끊은 뒤 펼침)
         wm.addView(r, p)
         root = r
+        if (ringing) r.post { // 화면 아래로 넘치면 넘치지 않을 만큼만 위로 (위쪽 전화 팝업 아래까지)
+            val H = c.resources.displayMetrics.heightPixels
+            val maxY = H - r.height - dp(c, 24f)
+            val minY = (H * 0.18).toInt()
+            if (root === r && p.y > maxY) { p.y = maxOf(minY, maxY); runCatching { wm.updateViewLayout(r, p) } }
+        }
         PermWatch.markOverlayOk(c)
         CallbackStore.diag(c, "☎ 메모창 화면에 띄움 ✅" + (if (!CallbackPopup.canShow(c)) " (확인 창 권한 꺼짐 상태)" else ""))
         runCatching { render(c) }

@@ -158,7 +158,13 @@ object MemoPopup {
         subTv = tv(CallbackStore.mask(num), 12.5f, MUTE)
         titles.addView(titleTv); titles.addView(subTv)
         head.addView(titles, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        val editBtn = chip("✏️ 메모", 0xFFDDF4F1.toInt(), 0xFF077A6F.toInt()).apply { setOnClickListener { showEdit(c, editBox?.visibility != View.VISIBLE) } }
+        val editBtn = chip("접기", 0xFFDDF4F1.toInt(), 0xFF077A6F.toInt())
+        editBtn.setOnClickListener {
+            val open = editBox?.visibility != View.VISIBLE
+            editBox?.visibility = if (open) View.VISIBLE else View.GONE
+            editBtn.text = if (open) "접기" else "✏️ 메모"
+            if (!open) setFocusable(c, false)
+        }
         head.addView(editBtn, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { rightMargin = dp(c, 6f) })
         val minBtn = chip("작게", 0xFFEEF2F3.toInt(), 0xFF3B4850.toInt()).apply { setOnClickListener { setSmall(c, true) } }
         val xBtn = chip("✕", 0xFFEEF2F3.toInt(), 0xFF3B4850.toInt()).apply { setOnClickListener { saveDraft(c); close(c) } }
@@ -172,19 +178,31 @@ object MemoPopup {
             hint = "이름 (예: 김OO 34평 관심)"; setSingleLine(true); setTextSize(TypedValue.COMPLEX_UNIT_SP, 14.5f)
             background = round(c, 0xFFF5F7F8.toInt(), 12f); setPadding(dp(c, 12f), dp(c, 9f), dp(c, 12f), dp(c, 9f))
         }
-        val edit = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
+        val edit = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL } // 처음부터 펼친 상태
         editBox = edit
         edit.addView(nameEt, lp(10f))
         histBox = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
-        val sc = ScrollView(c).apply { addView(histBox); isVerticalScrollBarEnabled = true }
-        val maxH = (c.resources.displayMetrics.heightPixels * 0.55).toInt()
+        val sc = ScrollView(c).apply {
+            addView(histBox); isVerticalScrollBarEnabled = true
+            isScrollbarFadingEnabled = false            // 오른쪽 스크롤 막대가 늘 보여서 어디쯤인지 알 수 있게
+            scrollBarStyle = View.SCROLLBARS_INSIDE_INSET
+        }
+        val maxH = (c.resources.displayMetrics.heightPixels * 0.36).toInt()
         body.addView(sc, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(c, 8f) })
         sc.viewTreeObserver.addOnGlobalLayoutListener {
             if (sc.height > maxH) sc.layoutParams = (sc.layoutParams as LinearLayout.LayoutParams).apply { height = maxH }
         }
         memoEt = EditText(c).apply {
-            hint = "새 메모 (키보드의 🎤 마이크로 말해도 돼요)"; minLines = 2; maxLines = 5
+            hint = "새 메모 (키보드의 🎤 마이크로 말해도 돼요)"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            setLines(6); gravity = Gravity.TOP or Gravity.START        // 예전보다 3배 큰 칸 · 길면 손가락으로 올려서 보기
+            isVerticalScrollBarEnabled = true; isScrollbarFadingEnabled = false
+            scrollBarStyle = View.SCROLLBARS_INSIDE_INSET
+            setOnTouchListener { v, e -> // 칸 안에서 위아래로 끌 때는 창이 아니라 글이 움직이게
+                v.parent?.requestDisallowInterceptTouchEvent(true)
+                if (e.actionMasked == MotionEvent.ACTION_DOWN) setFocusable(c, true)
+                false
+            }
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 14.5f)
             background = round(c, 0xFFF5F7F8.toInt(), 12f); setPadding(dp(c, 12f), dp(c, 9f), dp(c, 12f), dp(c, 9f))
         }
@@ -260,7 +278,6 @@ object MemoPopup {
             false
         }
         nameEt?.setOnTouchListener(focusOn)
-        memoEt?.setOnTouchListener(focusOn)
 
         wm.addView(r, p)
         root = r

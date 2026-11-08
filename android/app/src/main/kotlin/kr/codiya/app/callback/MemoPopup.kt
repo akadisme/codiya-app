@@ -222,7 +222,6 @@ object MemoPopup {
         if (small) setSmall(c, false)
         p.y = dp(c, 36f)
         runCatching { (c.getSystemService(Context.WINDOW_SERVICE) as WindowManager).updateViewLayout(r, p) }
-        main.postDelayed({ bringFront(c, r) }, 1500L) // 통화 끝 화면에 가려졌을 때 대비 한 번만
     }
 
     /** 끊었을 때: 그 번호 메모창 (지난 메모 + 새로 쓰기). 못 띄우면 알림을 그대로 둠 */
@@ -436,8 +435,7 @@ object MemoPopup {
         CallbackStore.diag(c, "☎ 메모창 화면에 띄움 ✅" + (if (!CallbackPopup.canShow(c)) " (확인 창 권한 꺼짐 상태)" else ""))
         runCatching { render(c) }
         // 에이닷·T전화 같은 전화앱이 자기 화면을 나중에 띄우면 메모창이 뒤로 숨어서, 맨 앞으로 몇 번 다시 올려요
-        // 끊은 뒤 에이닷 같은 전화앱 화면이 나중에 덮을 때만 한 번 다시 올림 (울릴 땐 깜빡이지 않게 안 함)
-        if (!ringing) main.postDelayed({ bringFront(c, r) }, 1500L)
+        // (내렸다 다시 올리기는 깜빡임의 원인이라 하지 않음 — 울릴 땐 안드로이드가 다시 올리기를 막아 창이 사라지기도 했음)
     }
 
     private fun bringFront(c: Context, r: FrameLayout) {

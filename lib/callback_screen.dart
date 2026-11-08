@@ -196,7 +196,7 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
                     child: Text(
                       _allOn
                           ? '✅ 준비 완료! 저장 안 된 번호와 통화가 끝나면 알림이 떠요.'
-                          : '아래 5가지를 켜면, 전화가 올 때 메모창이 뜨고 통화가 끝나면 콜백문자를 바로 보낼 수 있어요.',
+                          : '아래 5가지를 켜면, 전화가 올 때 위쪽 알림에 지난 메모가 보이고, 끊으면 메모창과 콜백문자 창이 떠요.',
                       style: TextStyle(fontWeight: FontWeight.w700, color: _allOn ? mint : const Color(0xFF06665D)),
                     ),
                   ),
@@ -214,7 +214,7 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
                   }),
                   _step(3, '통화 후 확인 창 띄우기', '"다른 앱 위에 표시"에서 코디야를 켜주세요. 통화가 끝나면 화면 가운데 "콜백문자를 보내시겠습니까?" 창이 떠요. (끄면 알림줄로 알려줘요)\n\n💡 창이 떠 있는 동안 휴대폰이 "코디야가 다른 앱 위에 표시 중" 알림을 띄워요. 그 알림을 길게 눌러 [알림 끄기]를 하면 다시 안 떠요 (창은 그대로 잘 떠요)',
                       _overlay, '🪟 확인 창 켜기', coral, () => CallbackBridge.call('requestOverlay')),
-                  _step(4, '📒 전화 메모창', '전화가 오면 받기 전에 그 고객의 지난 메모·AI 요약이 화면 위에 떠요. 저장된 연락처도 보이게 "통화 기록"(번호 확인만)과 🎤 말로 메모용 "마이크"를 허용해주세요.',
+                  _step(4, '📒 전화 메모창', '전화가 오면 위쪽 알림에 그 고객의 지난 메모가 보이고(통화 중엔 화면 위를 쓸어내려 확인), 끊으면 메모창이 떠서 바로 적을 수 있어요. 저장된 연락처도 보이게 "통화 기록"(번호 확인만)을 허용해주세요.',
                       _s['calllog'] == true && _s['mic'] == true, '📒 메모창 켜기', gold, () async {
                     await CallbackBridge.call('requestMemo');
                     await Future.delayed(const Duration(milliseconds: 600));
@@ -267,7 +267,7 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(color: const Color(0xFFFFF4E5), borderRadius: BorderRadius.circular(12)),
                             child: const Text(
-                              '📞 "통화 기록" 권한이 없어서 전화 온 번호를 못 받고 있어요. 번호를 알아야 전화 받기 전에 그 고객 메모창을 띄울 수 있어요.\n'
+                              '📞 "통화 기록" 권한이 없어서 전화 온 번호를 못 받고 있어요. 번호를 알아야 그 고객의 지난 메모를 보여줄 수 있어요.\n'
                               '아래 버튼 → [허용]을 눌러 주세요. 창이 안 뜨면 설정 화면에서 권한 → 통화 기록 → 허용.\n'
                               '(허용이 회색이면: 앱 정보 → 오른쪽 위 ⋮ → [제한된 설정 허용] 후 다시)',
                               style: TextStyle(fontSize: 13, height: 1.6, color: Color(0xFF7A4B00)),

@@ -77,6 +77,7 @@ object MemoPopup {
     fun onCallEnded(c: Context) {
         val app = c.applicationContext
         main.post {
+            runCatching { showAfterCall(app) }
             val key = curKey
             if (root == null || key.isEmpty()) return@post
             autoCloseKey = key
@@ -129,7 +130,7 @@ object MemoPopup {
         onRingingNow(app, num)
     }
 
-    private const val MEMO_CH = "call_memo"
+    private const val MEMO_CH = "call_memo2" // 소리·진동 없는 채널 (벨소리와 안 겹치게)
     /** 확인 창 권한이 없을 때: 지난 메모를 맨 위 알림으로 (백그라운드에서) */
     private fun notifyMemo(app: Context, num: String) {
         val key = CallbackStore.memoKey(num)
@@ -145,10 +146,13 @@ object MemoPopup {
             val m = items.optJSONObject(i) ?: continue
             sb.append(m.optString("at")).append("  ").append(m.optString("body").replace("\n", " ").take(80)).append('\n')
         }
-        val text = (if (sb.isEmpty()) "아직 남긴 메모가 없어요." else sb.toString().trim()) +
-            (if (!CallbackPopup.canShow(app)) "\n💡 눌러서 [확인 창 권한]을 켜면 전화 받기 전에 메모창이 화면 맨 앞에 떠요" else "")
+        val text = (if (sb.isEmpty()) "아직 남긴 메모가 없어요 · 끊으면 메모창에서 남겨보세요" else sb.toString().trim())
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val ch = android.app.NotificationChannel(MEMO_CH, "전화 메모", android.app.NotificationManager.IMPORTANCE_HIGH).apply { description = "전화가 올 때 지난 메모를 보여줘요" }
+            val ch = android.app.NotificationChannel(MEMO_CH, "전화 메모 (통화 중)", android.app.NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "전화가 올 때 그 고객의 지난 메모를 위쪽 알림으로 보여줘요"
+                setSound(null, null); enableVibration(false)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+            }
             app.getSystemService(android.app.NotificationManager::class.java).createNotificationChannel(ch)
         }
         val open = app.packageManager.getLaunchIntentForPackage(app.packageName)?.apply {
@@ -163,40 +167,64 @@ object MemoPopup {
             .setContentText(text)
             .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText(text))
             .setPriority(androidx.core.app.NotificationCompat.PRIORITY_MAX)
-            .setCategory(androidx.core.app.NotificationCompat.CATEGORY_CALL)
+            .setCategory(androidx.core.app.NotificationCompat.CATEGORY_MESSAGE)
+            .setVisibility(androidx.core.app.NotificationCompat.VISIBILITY_PUBLIC)
+            .setOnlyAlertOnce(true)
             .setAutoCancel(true)
-            .setTimeoutAfter(10 * 60 * 1000L)
+            .setTimeoutAfter(60 * 60 * 1000L) // 긴 통화 중에도 쓸어내리면 보이게 (끊으면 메모창으로 바뀜)
         if (pi != null) b.setContentIntent(pi)
         try { androidx.core.app.NotificationManagerCompat.from(app).notify(7800, b.build()) } catch (_: SecurityException) {}
     }
 
+    // 통화 후 메모 방식: 울릴 때는 위쪽 알림만 (수신 화면이 창을 가려서), 끊으면 그 번호 메모창
+    @Volatile private var pendNum = ""
+
     private fun onRingingNow(app: Context, num: String) {
         val key = CallbackStore.memoKey(num)
         if (key.isEmpty()) return
-        synchronized(this) { // 같은 전화로 두 번 불려도 한 번만 (전화 상태 · 번호 확인)
+        pendNum = num
+        CallbackStore.prefs(app).edit().putString("memo_pend", num).putLong("memo_pend_at", System.currentTimeMillis()).apply()
+        synchronized(this) { // 같은 전화로 두 번 불려도 한 번만 — 끊고 바로 다시 와도 뜨게 15초
             val now = System.currentTimeMillis()
-            if (key == lastKey && now - lastAt < 8_000L) return // 같은 울림이 두 번 알려 온 것만 거름
+            if (key == lastKey && now - lastAt < 15_000L) return
             lastKey = key; lastAt = now
         }
         CallbackStore.addRecent(app, num)
-        CallbackStore.diag(app, "☎ 전화 옴 " + CallbackStore.mask(num) + " · 메모창 띄우는 중")
-        main.post {
-            if (curKey == key && root != null) { if (small) setSmall(app, false); return@post } // 이미 떠 있으면 크게만
-            runCatching { show(app, num, key) }.onFailure { e ->
-                // 창을 못 띄움(확인 창 권한 꺼짐 등) → 지난 메모를 알림으로라도
-                root = null; curKey = ""
-                CallbackStore.diag(app, "☎ 전화 옴 " + CallbackStore.mask(num) + " · 메모창을 못 띄워 알림으로 보여줌 (" +
-                    e.javaClass.simpleName + (if (!CallbackPopup.canShow(app)) " · 확인 창 권한 꺼짐" else "") + ")")
-                Thread { runCatching { notifyMemo(app, num) } }.start()
-            }
+        CallbackStore.diag(app, "☎ 전화 옴 " + CallbackStore.mask(num) + " · 위쪽 알림에 메모 표시 (끊으면 메모창)")
+        Thread { runCatching { notifyMemo(app, num) } }.start()
+        Thread { CallbackStore.fetchConfig(app) }.start() // 다음 전화 대비 설정 새로고침
+    }
+
+    /** 끊었을 때: 그 번호 메모창 (지난 메모 + 새로 쓰기). 못 띄우면 알림을 그대로 둠 */
+    private fun showAfterCall(app: Context) {
+        var num = pendNum
+        val pp = CallbackStore.prefs(app)
+        if (num.isEmpty()) { // 앱이 잠깐 꺼졌다 켜진 경우: 저장해 둔 번호로 (30분 안)
+            val n = pp.getString("memo_pend", "") ?: ""
+            if (n.isNotEmpty() && System.currentTimeMillis() - pp.getLong("memo_pend_at", 0L) < 30 * 60_000L) num = n
         }
+        pendNum = ""
+        pp.edit().remove("memo_pend").apply()
+        if (num.isEmpty() || !enabled(app)) return
+        val key = CallbackStore.memoKey(num)
+        if (key.isEmpty()) return
+        if (!(curKey == key && root != null)) {
+            val ok = runCatching { show(app, num, key) }
+            if (ok.isFailure) {
+                root = null; curKey = ""
+                val e = ok.exceptionOrNull()
+                CallbackStore.diag(app, "☎ 통화 끝 " + CallbackStore.mask(num) + " · 메모창을 못 띄움 (" + (e?.javaClass?.simpleName ?: "") +
+                    (if (!CallbackPopup.canShow(app)) " · 확인 창 권한 꺼짐" else "") + ") → 위쪽 알림으로 메모 확인")
+                return
+            }
+            CallbackStore.diag(app, "☎ 통화 끝 " + CallbackStore.mask(num) + " · ✅ 메모창 띄움")
+        }
+        runCatching { androidx.core.app.NotificationManagerCompat.from(app).cancel(7800) }
         Thread {
-            val j = CallbackStore.memoGet(app, key, CallbackStore.mask(num), call = true)
+            val j = CallbackStore.memoGet(app, key, CallbackStore.mask(num), call = false)
             if (j != null && !j.optBoolean("off")) main.post { if (curKey == key) { data = j; runCatching { render(app) } } }
             else if (j != null && j.optBoolean("off")) main.post { if (curKey == key) close(app) }
         }.start()
-        // 설정 새로고침 (다음 전화 대비)
-        Thread { CallbackStore.fetchConfig(app) }.start()
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -369,6 +397,7 @@ object MemoPopup {
 
     private fun bringFront(c: Context, r: FrameLayout) {
         if (root !== r) return
+        if (CallbackPopup.isShowing()) return // 콜백 확인 창이 떠 있으면 그 위로 올라가지 않음
         if (editBox?.visibility == View.VISIBLE && memoEt?.hasFocus() == true) return // 글 쓰는 중엔 그대로
         val p = params ?: return
         val wm = c.getSystemService(Context.WINDOW_SERVICE) as WindowManager

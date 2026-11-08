@@ -38,6 +38,8 @@ object CallbackPopup {
     private const val INK = 0xFF0F181D.toInt()
     private const val MUTE = 0xFF5B6870.toInt()
     private var current: View? = null
+    /** 콜백 확인 창이 떠 있는지 (메모창이 그 위로 올라가지 않게) */
+    fun isShowing(): Boolean = current != null
     // 아직 못 띄운 창 (통화 중 대기 전화): first = 창으로 띄우기, second = 알림줄로 보내기
     private val waiting = ArrayDeque<Pair<() -> Unit, () -> Unit>>()
 

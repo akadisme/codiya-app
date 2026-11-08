@@ -111,7 +111,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
         builder: (ctx) => AlertDialog(
           title: const Text('🪟 확인 창 권한 켜기'),
           content: const Text('통화가 끝나면 알림줄이 아니라 화면 가운데에 "콜백문자를 보내시겠습니까?" 창이 바로 떠요. '
-              '[보내기] 한 번이면 문자가 나가고, 전화가 올 때 고객 메모창도 이 권한으로 떠요.\n\n'
+              '[보내기] 한 번이면 문자가 나가고, 통화 후 고객 메모창도 이 권한으로 떠요.\n\n'
               '[지금 켜기]를 누르면 설정 화면이 열려요. 목록에서 코디야 스위치를 켜고 뒤로 가기를 눌러 주세요.\n\n'
               '(스위치가 회색이면: 앱 정보 → 오른쪽 위 ⋮ → [제한된 설정 허용] 후 다시)'),
           actions: [

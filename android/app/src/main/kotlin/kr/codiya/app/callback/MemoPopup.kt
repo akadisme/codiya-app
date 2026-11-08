@@ -297,7 +297,7 @@ object MemoPopup {
         }
         head.addView(editBtn, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { rightMargin = dp(c, 6f) })
         val minBtn = chip("작게", 0xFFEEF2F3.toInt(), 0xFF3B4850.toInt()).apply { setOnClickListener { setSmall(c, true) } }
-        val xBtn = chip("✕", 0xFFEEF2F3.toInt(), 0xFF3B4850.toInt()).apply { setOnClickListener { saveDraft(c); close(c) } }
+        val xBtn = chip("✕", 0xFFEEF2F3.toInt(), 0xFF3B4850.toInt()).apply { setOnClickListener { keepDraft(c); close(c) } }
         head.addView(minBtn); head.addView(xBtn, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(c, 6f) })
         card.addView(head)
 
@@ -335,6 +335,8 @@ object MemoPopup {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 14.5f)
             background = round(c, 0xFFF5F7F8.toInt(), 12f); setPadding(dp(c, 12f), dp(c, 9f), dp(c, 12f), dp(c, 9f))
         }
+        // 지난번에 [닫기]로 접어 둔 글이 있으면 이어서 쓰기
+        CallbackStore.prefs(c).getString("draft_$key", null)?.let { if (it.isNotBlank()) memoEt?.setText(it) }
         memoEt?.addTextChangedListener(object : android.text.TextWatcher {
             override fun afterTextChanged(e: android.text.Editable?) { lastTyped = System.currentTimeMillis() }
             override fun beforeTextChanged(a: CharSequence?, b: Int, c2: Int, d: Int) {}
@@ -350,6 +352,12 @@ object MemoPopup {
             gravity = Gravity.CENTER; background = grad(c, GOLD2, GOLD, 12f); setPadding(0, dp(c, 11f), 0, dp(c, 11f))
             setOnClickListener { save(c) }
         }
+        // [닫기]: 적던 내용은 임시 보관 → 같은 고객 메모창이 다시 뜨면 이어서 쓰기
+        val closeBtn = tv("닫기", 14.5f, 0xFF3B4850.toInt(), true).apply {
+            gravity = Gravity.CENTER; background = round(c, 0xFFEEF2F3.toInt(), 12f); setPadding(0, dp(c, 11f), 0, dp(c, 11f))
+            setOnClickListener { keepDraft(c); close(c) }
+        }
+        btns.addView(closeBtn, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { rightMargin = dp(c, 8f) })
         btns.addView(save, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         edit.addView(btns, lp(8f))
         body.addView(edit)
@@ -491,7 +499,8 @@ object MemoPopup {
         }
         subTv?.text = CallbackStore.pretty(curNum) + (if (calls > 0) " · 통화 ${calls}번" else "") +
             (d?.optString("last_at")?.takeIf { it.isNotEmpty() && calls > 1 }?.let { " · 지난 통화 " + it.substring(5) } ?: "")
-        if (nameEt?.hasFocus() != true && name.isNotEmpty() && nameEt?.text.isNullOrEmpty()) nameEt?.setText(name)
+        // 이름 칸은 이름 없는 고객(처음 온 번호 등)일 때만 — 이름이 있으면 제목에 보이니 숨김
+        if (d != null) nameEt?.visibility = if (name.isEmpty() || nameEt?.hasFocus() == true) View.VISIBLE else View.GONE
         smallTv?.text = "📒 " + (if (name.isNotEmpty()) name else CallbackStore.pretty(curNum)) + (if (n > 0) " · 메모 $n" else "") + "  ▾"
 
         val box = histBox ?: return
@@ -526,6 +535,7 @@ object MemoPopup {
         val kind = if (voiceUsed) "voice" else "note"
         if (memo.isEmpty() && name == oldName) { if (closeAfter) close(c) else setFocusable(c, false); return }
         memoEt?.setText(""); voiceUsed = false
+        CallbackStore.prefs(c).edit().remove("draft_$key").apply() // 저장했으니 임시 글은 지움
         setFocusable(c, false)
         if (memo.isNotEmpty() && kind == "voice") Toast.makeText(c, "🤖 AI로 정리해서 저장하는 중…", Toast.LENGTH_SHORT).show()
         Thread {
@@ -541,6 +551,15 @@ object MemoPopup {
                 if (closeAfter) close(c)
             }
         }.start()
+    }
+
+    /** [닫기]: 적던 글은 휴대폰에만 임시 보관 (저장하지 않음) → 같은 고객 메모창이 다시 뜨면 이어서 */
+    private fun keepDraft(c: Context) {
+        if (curKey.isEmpty()) return
+        val memo = memoEt?.text?.toString() ?: ""
+        val e = CallbackStore.prefs(c).edit()
+        if (memo.isBlank()) e.remove("draft_$curKey") else e.putString("draft_$curKey", memo)
+        e.apply()
     }
 
     /** 닫거나 다른 번호로 바뀔 때 적던 메모 저장 */

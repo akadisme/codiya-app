@@ -44,7 +44,9 @@ class PhoneStateReceiver : BroadcastReceiver() {
                 p.edit().putString("ph", "idle").putBoolean("ph_wait", false).apply()
                 Thread { PermWatch.check(context.applicationContext) }.start() // 권한이 꺼졌으면 알림 (12시간에 한 번)
                 // 받은 전화가 끝났을 때만 메모창 (부재중·내가 건 전화는 안 띄움) · 3분 동안 안 쓰면 자동으로 닫힘
-                if (ph == "talking") MemoPopup.onCallEnded(context) else MemoPopup.clearPending(context)
+                // (끝 신호가 두 번 와도 두 번째(ph=idle)는 아무것도 안 함 — 예전엔 여기서 번호를 지워 메모창이 안 떴음)
+                if (ph == "talking") MemoPopup.onCallEnded(context)
+                else if (ph == "ringing" || ph == "outgoing") MemoPopup.clearPending(context)
                 if (ph != "ringing" && ph != "talking") { if (ph == "outgoing") CallbackStore.takeCallNums(context); return }
                 val missed = ph == "ringing"
                 val nums = CallbackStore.takeCallNums(context)

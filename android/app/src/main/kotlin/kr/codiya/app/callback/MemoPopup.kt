@@ -152,7 +152,7 @@ object MemoPopup {
             app.getSystemService(android.app.NotificationManager::class.java).createNotificationChannel(ch)
         }
         val open = app.packageManager.getLaunchIntentForPackage(app.packageName)?.apply {
-            putExtra("open_url", CallbackStore.siteUrl(app) + "/appapi/callback.php")
+            putExtra("open_url", "codiya://callback") // 앱의 콜백문자·통화 감지 화면
             addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP)
         }
         val pi = open?.let { android.app.PendingIntent.getActivity(app, 7801, it, android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE) }
@@ -186,7 +186,7 @@ object MemoPopup {
                 // 창을 못 띄움(확인 창 권한 꺼짐 등) → 지난 메모를 알림으로라도
                 root = null; curKey = ""
                 CallbackStore.diag(app, "📒 전화 옴 " + CallbackStore.mask(num) + " · 메모창을 못 띄워 알림으로 보여줌 (" +
-                    (if (!CallbackPopup.canShow(app)) "확인 창 권한 꺼짐" else e.javaClass.simpleName) + ")")
+                    e.javaClass.simpleName + (if (!CallbackPopup.canShow(app)) " · 확인 창 권한 꺼짐" else "") + ")")
                 Thread { runCatching { notifyMemo(app, num) } }.start()
             }
         }
@@ -271,8 +271,7 @@ object MemoPopup {
             hint = "새 메모 (키보드의 🎤 마이크로 말해도 돼요)"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
             setLines(6); gravity = Gravity.TOP or Gravity.START        // 예전보다 3배 큰 칸 · 길면 손가락으로 올려서 보기
-            isVerticalScrollBarEnabled = true; isScrollbarFadingEnabled = false
-            scrollBarStyle = View.SCROLLBARS_INSIDE_INSET
+            // (코드로 만든 입력칸에 스크롤 막대를 켜면 안드로이드 16에서 앱이 멈춰서 막대는 안 씀)
             setOnTouchListener { v, e -> // 칸 안에서 위아래로 끌 때는 창이 아니라 글이 움직이게
                 v.parent?.requestDisallowInterceptTouchEvent(true)
                 if (e.actionMasked == MotionEvent.ACTION_DOWN) setFocusable(c, true)

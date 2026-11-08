@@ -162,7 +162,14 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
   /// 메모 알림 등을 눌러 열었으면 그 화면(콜백문자 설정)으로. 로그인 안 했으면 로그인 후 그 화면으로 이동돼요
   Future<void> _checkOpen() async {
     final u = await CallbackBridge.takeOpen();
-    if (u.isNotEmpty) Future.delayed(const Duration(milliseconds: 600), () => _openLink(u));
+    if (u.isEmpty) return;
+    Future.delayed(const Duration(milliseconds: 600), () {
+      if (u.startsWith('codiya://')) {
+        _appLink(Uri.parse(u));
+      } else {
+        _openLink(u);
+      }
+    });
   }
 
   void _openLink(String link) {

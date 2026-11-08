@@ -71,6 +71,54 @@ object CallbackStore {
         val old = prefs(c).getString("diag", "") ?: ""
         val lines = ("$t  $msg\n" + old).lines().filter { it.isNotBlank() }.take(8)
         prefs(c).edit().putString("diag", lines.joinToString("\n")).apply()
+        reportDiagSoon(c)
+    }
+
+    /** 감지 기록을 서버로 → PC 콜백문자 화면(휴대폰 설정 방법 탭)에서 보고 복사 */
+    @Volatile private var reportAt = 0L
+    fun reportDiagSoon(c: Context) {
+        val app = c.applicationContext
+        val now = System.currentTimeMillis()
+        if (now - reportAt < 4000L) return // 잠깐 사이 여러 줄이면 한 번만
+        reportAt = now
+        Thread {
+            try {
+                Thread.sleep(3000L)
+                reportDiag(app)
+            } catch (_: Exception) {}
+        }.start()
+    }
+
+    fun diagText(c: Context): String {
+        val p = prefs(c)
+        fun ok(perm: String) = androidx.core.content.ContextCompat.checkSelfPermission(c, perm) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        var role = false
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            val rm = c.getSystemService(android.app.role.RoleManager::class.java)
+            role = rm != null && rm.isRoleHeld(android.app.role.RoleManager.ROLE_CALL_SCREENING)
+        }
+        val ver = runCatching { c.packageManager.getPackageInfo(c.packageName, 0).versionName }.getOrNull() ?: ""
+        val head = "코디야 앱 v" + ver + " · 안드로이드 " + android.os.Build.VERSION.RELEASE + " · " + android.os.Build.MODEL +
+            "\n확인 창 " + (if (CallbackPopup.canShow(c)) "켜짐" else "꺼짐") +
+            " · 통화 기록 " + (if (ok(android.Manifest.permission.READ_CALL_LOG)) "허용" else "안 됨") +
+            " · 전화 " + (if (ok(android.Manifest.permission.READ_PHONE_STATE)) "허용" else "안 됨") +
+            " · 번호 확인 " + (if (role) "켜짐" else "꺼짐")
+        val crash = p.getString("crash", "") ?: ""
+        return head + "\n\n" + (p.getString("diag", "") ?: "") + (if (crash.isNotEmpty()) "\n\n[마지막 오류]\n" + crash.take(1500) else "")
+    }
+
+    fun reportDiag(c: Context) {
+        val token = prefs(c).getString("token", null) ?: return
+        try {
+            val con = (URL(api(c) + "/v1/diag").openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"; doOutput = true; connectTimeout = 5000; readTimeout = 10000
+                setRequestProperty("Content-Type", "application/json")
+            }
+            val o = JSONObject().put("token", token).put("text", diagText(c))
+            con.outputStream.use { it.write(o.toString().toByteArray()) }
+            con.responseCode
+            con.disconnect()
+        } catch (_: Exception) {}
     }
 
     // ---------- 전화 메모 ----------

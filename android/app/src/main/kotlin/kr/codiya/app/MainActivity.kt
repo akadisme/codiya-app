@@ -36,7 +36,7 @@ class MainActivity : FlutterActivity() {
                 "setDevice" -> {
                     CallbackStore.setDevice(this, call.argument<String>("token") ?: "", call.argument<String>("api") ?: "")
                     val app = applicationContext
-                    Thread { CallbackStore.fetchConfig(app); CallbackStore.flushLogs(app) }.start()
+                    Thread { CallbackStore.fetchConfig(app); CallbackStore.flushLogs(app); CallbackStore.reportDiag(app) }.start()
                     result.success(true)
                 }
                 "status" -> result.success(status())

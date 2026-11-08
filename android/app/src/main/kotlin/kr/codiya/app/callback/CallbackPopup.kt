@@ -41,8 +41,17 @@ object CallbackPopup {
     // 아직 못 띄운 창 (통화 중 대기 전화): first = 창으로 띄우기, second = 알림줄로 보내기
     private val waiting = ArrayDeque<Pair<() -> Unit, () -> Unit>>()
 
-    fun canShow(c: Context): Boolean =
-        Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(c)
+    /** '다른 앱 위에 표시' 허용 여부: 일부 휴대폰은 켜 놓아도 canDrawOverlays 가 늦게 바뀌어서 시스템 기록(AppOps)도 같이 봄 */
+    fun canShow(c: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true
+        if (Settings.canDrawOverlays(c)) return true
+        return try {
+            val ops = c.getSystemService(Context.APP_OPS_SERVICE) as android.app.AppOpsManager
+            val mode = if (Build.VERSION.SDK_INT >= 29) ops.unsafeCheckOpNoThrow("android:system_alert_window", android.os.Process.myUid(), c.packageName)
+                       else @Suppress("DEPRECATION") ops.checkOpNoThrow("android:system_alert_window", android.os.Process.myUid(), c.packageName)
+            mode == android.app.AppOpsManager.MODE_ALLOWED
+        } catch (_: Exception) { false }
+    }
 
     /** 백그라운드에서 호출 → 화면에 띄우고 성공 여부 반환 */
     fun show(c: Context, num: String, missed: Boolean, list: List<JSONObject>, hint: Boolean, fallback: () -> Unit = {}): Boolean {

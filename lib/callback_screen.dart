@@ -243,9 +243,45 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
                       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16),
                           border: Border.all(color: const Color(0xFFDDE3E6))),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        const Text('🔎 최근 통화 감지 기록', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5)),
+                        Row(children: [
+                          const Expanded(child: Text('🔎 최근 통화 감지 기록', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5))),
+                          TextButton.icon(
+                            onPressed: () async {
+                              final info = '${appUserAgentSuffix.trim()} · 확인 창 ${_overlay ? '켜짐' : '꺼짐'} · 통화 기록 ${_s['calllog'] == true ? '허용' : '안 됨'}'
+                                  ' · 전화 ${_s['phone'] == true ? '허용' : '안 됨'} · 번호 확인 ${_s['role'] == true ? '켜짐' : '꺼짐'}\n\n${_s['diag']}'
+                                  '${(_s['crash'] ?? '').toString().isNotEmpty ? '\n\n[마지막 오류]\n${_s['crash']}' : ''}';
+                              await Clipboard.setData(ClipboardData(text: info));
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('복사했어요. 채팅창에 붙여넣기 해 주세요.')));
+                              }
+                            },
+                            icon: const Icon(Icons.copy, size: 16),
+                            label: const Text('복사'),
+                          ),
+                        ]),
                         const SizedBox(height: 6),
-                        Text(_s['diag'].toString(), style: const TextStyle(fontSize: 13, height: 1.6, color: Color(0xFF3B4850))),
+                        SelectableText(_s['diag'].toString(), style: const TextStyle(fontSize: 13, height: 1.6, color: Color(0xFF3B4850))),
+                        if (_s['calllog'] != true) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(color: const Color(0xFFFFF4E5), borderRadius: BorderRadius.circular(12)),
+                            child: const Text(
+                              '📞 "통화 기록" 권한이 없어서 전화 온 번호를 못 받고 있어요. 번호를 알아야 전화 받기 전에 그 고객 메모창을 띄울 수 있어요.\n'
+                              '아래 버튼 → [허용]을 눌러 주세요. 창이 안 뜨면 설정 화면에서 권한 → 통화 기록 → 허용.\n'
+                              '(허용이 회색이면: 앱 정보 → 오른쪽 위 ⋮ → [제한된 설정 허용] 후 다시)',
+                              style: TextStyle(fontSize: 13, height: 1.6, color: Color(0xFF7A4B00)),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          _btn('📞 통화 기록 권한 켜기', coral, () async {
+                            await CallbackBridge.call('requestMemo');
+                            await Future.delayed(const Duration(milliseconds: 1500));
+                            final s2 = await CallbackBridge.status();
+                            if (s2['calllog'] != true && mounted) await CallbackBridge.call('openAppSettings');
+                            if (mounted) _refresh();
+                          }),
+                        ],
                         if (!_overlay) ...[
                           const SizedBox(height: 12),
                           Container(

@@ -30,7 +30,7 @@ class CallbackSendActivity : Activity() {
             return
         }
         NotificationManagerCompat.from(this).cancel(CallbackNotifier.notiId(intent.getStringExtra("num") ?: ""))
-        val needOverlay = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)
+        val needOverlay = !CallbackPopup.canShow(this)
         if (needOverlay) {
             setContentView(CallbackPopup.buildGuide(this,
                 onLater = { showConfirm() },

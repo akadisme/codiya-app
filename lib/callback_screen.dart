@@ -16,6 +16,16 @@ class CallbackBridge {
     } catch (_) {}
   }
 
+  /// 알림을 눌러 앱이 열렸을 때 열어야 할 주소 (없으면 '')
+  static Future<String> takeOpen() async {
+    if (!Platform.isAndroid) return '';
+    try {
+      return '${await _ch.invokeMethod('takeOpen') ?? ''}';
+    } catch (_) {
+      return '';
+    }
+  }
+
   static Future<Map<String, dynamic>> status() async {
     if (!Platform.isAndroid) return {};
     try {

@@ -64,6 +64,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
       final c = navKey.currentState?.overlay?.context;
       if (c != null) UpdateCheck.run(c, force: true);
       Future.delayed(const Duration(seconds: 6), _setupNag);
+      Future.delayed(const Duration(milliseconds: 1500), _checkOpen);
     });
     _sub = PushService.instance.taps.stream.listen((t) {
       if (t.link.startsWith('http')) {
@@ -77,6 +78,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      _checkOpen();
       final c = navKey.currentState?.overlay?.context;
       if (c != null) UpdateCheck.run(c); // 다시 열 때도 (30분에 한 번)
       Future.delayed(const Duration(seconds: 2), _setupNag);
@@ -155,6 +157,12 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _sub?.cancel();
     super.dispose();
+  }
+
+  /// 메모 알림 등을 눌러 열었으면 그 화면(콜백문자 설정)으로. 로그인 안 했으면 로그인 후 그 화면으로 이동돼요
+  Future<void> _checkOpen() async {
+    final u = await CallbackBridge.takeOpen();
+    if (u.isNotEmpty) Future.delayed(const Duration(milliseconds: 600), () => _openLink(u));
   }
 
   void _openLink(String link) {

@@ -45,6 +45,27 @@ object CallbackStore {
     }
 
     /** 최근 통화 감지 결과 (설정 화면에 표시 → 창이 안 뜬 이유 확인용) */
+    /** 앱이 멈추면(오류) 그 이유를 '최근 통화 감지 기록'에 남김 → 화면 캡처로 원인 확인 */
+    @Volatile private var crashOn = false
+    fun installCrashLog(c: Context) {
+        if (crashOn) return
+        crashOn = true
+        val app = c.applicationContext
+        val prev = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { t, e ->
+            try {
+                val at = e.stackTrace.firstOrNull { it.className.startsWith("kr.codiya") } ?: e.stackTrace.firstOrNull()
+                val msg = "⚠️ 앱 오류: " + e.javaClass.simpleName + " " + (e.message ?: "").take(70) + (if (at != null) " @" + at.fileName + ":" + at.lineNumber else "")
+                val tm = SimpleDateFormat("MM/dd HH:mm", Locale.KOREA).format(Date())
+                val old = prefs(app).getString("diag", "") ?: ""
+                val lines = ("$tm  $msg\n" + old).lines().filter { it.isNotBlank() }.take(8)
+                prefs(app).edit().putString("diag", lines.joinToString("\n"))
+                    .putString("crash", tm + " " + android.util.Log.getStackTraceString(e).take(3000)).commit()
+            } catch (_: Throwable) {}
+            prev?.uncaughtException(t, e)
+        }
+    }
+
     fun diag(c: Context, msg: String) {
         val t = SimpleDateFormat("MM/dd HH:mm", Locale.KOREA).format(Date())
         val old = prefs(c).getString("diag", "") ?: ""
@@ -70,6 +91,23 @@ object CallbackStore {
         if (n != null) { prefs(c).edit().putString("num_$key", n).apply(); return n }
         return prefs(c).getString("num_$key", "") ?: ""
     }
+
+    /** '다른 앱 위에 표시' 설정 열기: 코디야 전용 화면 → 전체 목록 → 앱 정보 순서로 시도 */
+    fun openOverlaySettings(a: android.app.Activity): Boolean {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.M) return false
+        val tries = listOf(
+            android.content.Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:" + a.packageName)),
+            android.content.Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION),
+            android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:" + a.packageName)),
+        )
+        for (i in tries) {
+            try { a.startActivity(i); return true } catch (_: Exception) {}
+        }
+        return false
+    }
+
+    /** 사이트 주소 (https://codiya.kr) */
+    fun siteUrl(c: Context): String = api(c).substringBefore("/cdapi/").ifEmpty { "https://codiya.kr" }
 
     private fun api(c: Context): String = prefs(c).getString("api", "https://codiya.kr/cdapi/app/index.php") ?: "https://codiya.kr/cdapi/app/index.php"
 

@@ -15,6 +15,20 @@ import kr.codiya.app.callback.CallbackNotifier
 import kr.codiya.app.callback.CallbackStore
 
 class MainActivity : FlutterActivity() {
+    /** 알림을 눌러 열 때 보여줄 주소 (예: 콜백문자 설정) — 플러터가 takeOpen 으로 가져감 */
+    private var pendingOpen: String? = null
+
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        CallbackStore.installCrashLog(this)
+        pendingOpen = intent?.getStringExtra("open_url")
+        super.onCreate(savedInstanceState)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        intent.getStringExtra("open_url")?.let { pendingOpen = it }
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "codiya/callback").setMethodCallHandler { call, result ->
@@ -52,11 +66,10 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                 }
                 "requestOverlay" -> {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
-                    }
+                    CallbackStore.openOverlaySettings(this)
                     result.success(true)
                 }
+                "takeOpen" -> { result.success(pendingOpen ?: ""); pendingOpen = null }
                 "openAppSettings" -> {
                     startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
                     result.success(true)

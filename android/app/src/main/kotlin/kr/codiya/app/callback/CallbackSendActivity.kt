@@ -22,6 +22,7 @@ class CallbackSendActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        CallbackStore.installCrashLog(this)
         val listJson = intent.getStringExtra("list")
         if (listJson == null) { // 바로 보내기
             send(intent.getStringExtra("num") ?: "", intent.getIntExtra("tpl_id", 0), intent.getStringExtra("text") ?: "",
@@ -35,11 +36,7 @@ class CallbackSendActivity : Activity() {
                 onLater = { showConfirm() },
                 onOk = {
                     waitingOverlay = true
-                    try {
-                        startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
-                    } catch (_: Exception) {
-                        waitingOverlay = false; showConfirm()
-                    }
+                    if (!CallbackStore.openOverlaySettings(this)) { waitingOverlay = false; showConfirm() }
                 }))
         } else {
             showConfirm()

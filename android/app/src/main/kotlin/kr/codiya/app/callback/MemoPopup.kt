@@ -108,7 +108,6 @@ object MemoPopup {
 
     /** 메모창 쓸 수 있는 상태인지 (권한·설정) */
     fun enabled(c: Context): Boolean {
-        if (!CallbackPopup.canShow(c)) return false
         val cfg = CallbackStore.cachedConfig(c) ?: return false
         if (cfg.has("allowed") && !cfg.optBoolean("allowed")) return false
         return cfg.optBoolean("memo", false)
@@ -118,12 +117,6 @@ object MemoPopup {
     fun onRinging(c: Context, num: String) {
         val app = c.applicationContext
         if (num.length < 8) return
-        if (!CallbackPopup.canShow(app)) {
-            // 확인 창 권한이 없으면 메모창을 화면에 못 띄움 → 지난 메모를 알림으로라도 보여 주기
-            CallbackStore.diag(app, "📒 전화 옴 " + CallbackStore.mask(num) + " · 확인 창 권한이 꺼져 있어 메모창 대신 알림으로 보여줌")
-            Thread { runCatching { notifyMemo(app, num) } }.start()
-            return
-        }
         if (!enabled(app)) {
             // 설정을 아직 못 받았거나(로그인 직후 등) 오래된 경우: 바로 새로 받아서 메모창 켜짐이면 띄움
             Thread {
@@ -153,12 +146,15 @@ object MemoPopup {
             sb.append(m.optString("at")).append("  ").append(m.optString("body").replace("\n", " ").take(80)).append('\n')
         }
         val text = (if (sb.isEmpty()) "아직 남긴 메모가 없어요." else sb.toString().trim()) +
-            "\n💡 코디야 앱 → 콜백문자 → [확인 창 권한 켜기]를 하면 전화 받기 전에 메모창이 화면 맨 앞에 떠요"
+            (if (!CallbackPopup.canShow(app)) "\n💡 눌러서 [확인 창 권한]을 켜면 전화 받기 전에 메모창이 화면 맨 앞에 떠요" else "")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val ch = android.app.NotificationChannel(MEMO_CH, "전화 메모", android.app.NotificationManager.IMPORTANCE_HIGH).apply { description = "전화가 올 때 지난 메모를 보여줘요" }
             app.getSystemService(android.app.NotificationManager::class.java).createNotificationChannel(ch)
         }
-        val open = app.packageManager.getLaunchIntentForPackage(app.packageName)
+        val open = app.packageManager.getLaunchIntentForPackage(app.packageName)?.apply {
+            putExtra("open_url", CallbackStore.siteUrl(app) + "/appapi/callback.php")
+            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
         val pi = open?.let { android.app.PendingIntent.getActivity(app, 7801, it, android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE) }
         val b = androidx.core.app.NotificationCompat.Builder(app, MEMO_CH)
             .setSmallIcon(kr.codiya.app.R.drawable.ic_stat_notify)
@@ -183,14 +179,20 @@ object MemoPopup {
             lastKey = key; lastAt = now
         }
         CallbackStore.addRecent(app, num)
-        CallbackStore.diag(app, "📒 전화 옴 " + CallbackStore.mask(num) + " · ✅ 메모창 띄움")
+        CallbackStore.diag(app, "📒 전화 옴 " + CallbackStore.mask(num) + " · 메모창 띄우는 중")
         main.post {
             if (curKey == key && root != null) { if (small) setSmall(app, false); return@post } // 이미 떠 있으면 크게만
-            runCatching { show(app, num, key) }
+            runCatching { show(app, num, key) }.onFailure { e ->
+                // 창을 못 띄움(확인 창 권한 꺼짐 등) → 지난 메모를 알림으로라도
+                root = null; curKey = ""
+                CallbackStore.diag(app, "📒 전화 옴 " + CallbackStore.mask(num) + " · 메모창을 못 띄워 알림으로 보여줌 (" +
+                    (if (!CallbackPopup.canShow(app)) "확인 창 권한 꺼짐" else e.javaClass.simpleName) + ")")
+                Thread { runCatching { notifyMemo(app, num) } }.start()
+            }
         }
         Thread {
             val j = CallbackStore.memoGet(app, key, CallbackStore.mask(num), call = true)
-            if (j != null && !j.optBoolean("off")) main.post { if (curKey == key) { data = j; render(app) } }
+            if (j != null && !j.optBoolean("off")) main.post { if (curKey == key) { data = j; runCatching { render(app) } } }
             else if (j != null && j.optBoolean("off")) main.post { if (curKey == key) close(app) }
         }.start()
         // 설정 새로고침 (다음 전화 대비)

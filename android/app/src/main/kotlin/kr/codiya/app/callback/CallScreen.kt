@@ -13,6 +13,7 @@ import androidx.annotation.RequiresApi
 class CallScreen : CallScreeningService() {
     override fun onScreenCall(details: Call.Details) {
         try {
+            CallbackStore.installCrashLog(this)
             val incoming = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
                 details.callDirection == Call.Details.DIRECTION_INCOMING
             val num = CallbackStore.digits(details.handle?.schemeSpecificPart)

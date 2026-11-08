@@ -13,6 +13,13 @@ import android.telephony.TelephonyManager
 class PhoneStateReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != TelephonyManager.ACTION_PHONE_STATE_CHANGED) return
+        CallbackStore.installCrashLog(context)
+        try { handle(context, intent) } catch (e: Exception) {
+            CallbackStore.diag(context, "⚠️ 전화 감지 중 오류: " + e.javaClass.simpleName + " " + (e.message ?: "").take(60))
+        }
+    }
+
+    private fun handle(context: Context, intent: Intent) {
         val state = intent.getStringExtra(TelephonyManager.EXTRA_STATE) ?: return
         val p = CallbackStore.prefs(context)
         val ph = p.getString("ph", "idle") ?: "idle"

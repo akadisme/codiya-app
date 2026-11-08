@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import 'callback_screen.dart';
 import 'config.dart';
+import 'push.dart';
 
 /// 홈페이지(그누보드)를 보여주는 화면
 class WebTab extends StatefulWidget {
@@ -71,6 +73,7 @@ class WebTabState extends State<WebTab> {
         onPageStarted: (_) => _scrollY = 0,
         onPageFinished: (_) {
           if (mounted && _refreshing) setState(() => _refreshing = false);
+          _syncCallback();
         },
         onNavigationRequest: (req) => _decide(req.url),
       ))
@@ -85,6 +88,16 @@ class WebTabState extends State<WebTab> {
   }
 
   Future<void> load(String url) => _c.loadRequest(Uri.parse(url));
+
+  /// 로그인·설정을 바꾼 뒤 메모창·콜백문자 설정을 바로 새로 받기 (1분에 한 번)
+  static DateTime? _lastSync;
+  void _syncCallback() {
+    final t = PushService.instance.token;
+    final now = DateTime.now();
+    if (t == null || (_lastSync != null && now.difference(_lastSync!) < const Duration(minutes: 1))) return;
+    _lastSync = now;
+    CallbackBridge.setDevice(t);
+  }
 
   Future<void> reload() => _c.reload();
 

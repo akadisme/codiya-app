@@ -66,6 +66,13 @@ object MemoPopup {
     private var bodyBox: LinearLayout? = null
     private var smallTv: TextView? = null
     private var micTv: TextView? = null
+    private var editBox: LinearLayout? = null
+
+    /** 메모 쓰기 칸 열기/닫기 (받기 전엔 닫혀 있어서 창이 작아요) */
+    private fun showEdit(c: Context, on: Boolean) {
+        editBox?.visibility = if (on) View.VISIBLE else View.GONE
+        if (on) { memoEt?.requestFocus() } else setFocusable(c, false)
+    }
 
     private fun dp(c: Context, v: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, c.resources.displayMetrics).toInt()
     private fun round(c: Context, color: Int, r: Float) = GradientDrawable().apply { setColor(color); cornerRadius = dp(c, r).toFloat() }
@@ -82,7 +89,16 @@ object MemoPopup {
     /** 전화가 울릴 때 (어느 스레드에서 불러도 됨) */
     fun onRinging(c: Context, num: String) {
         val app = c.applicationContext
-        if (num.length < 8 || !enabled(app)) return
+        if (num.length < 8 || !CallbackPopup.canShow(app)) return
+        if (!enabled(app)) {
+            // 설정을 아직 못 받았거나(로그인 직후 등) 오래된 경우: 바로 새로 받아서 메모창 켜짐이면 띄움
+            Thread { CallbackStore.fetchConfig(app, 2500); if (enabled(app)) main.post { onRingingNow(app, num) } }.start()
+            return
+        }
+        onRingingNow(app, num)
+    }
+
+    private fun onRingingNow(app: Context, num: String) {
         val key = CallbackStore.memoKey(num)
         if (key.isEmpty()) return
         synchronized(this) { // 같은 전화로 두 번 불려도 한 번만 (전화 상태 · 번호 확인)
@@ -138,6 +154,8 @@ object MemoPopup {
         subTv = tv(CallbackStore.mask(num), 12.5f, MUTE)
         titles.addView(titleTv); titles.addView(subTv)
         head.addView(titles, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        val editBtn = chip("✏️ 메모", 0xFFDDF4F1.toInt(), 0xFF077A6F.toInt()).apply { setOnClickListener { showEdit(c, editBox?.visibility != View.VISIBLE) } }
+        head.addView(editBtn, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { rightMargin = dp(c, 6f) })
         val minBtn = chip("작게", 0xFFEEF2F3.toInt(), 0xFF3B4850.toInt()).apply { setOnClickListener { setSmall(c, true) } }
         val xBtn = chip("✕", 0xFFEEF2F3.toInt(), 0xFF3B4850.toInt()).apply { setOnClickListener { saveDraft(c); close(c) } }
         head.addView(minBtn); head.addView(xBtn, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(c, 6f) })
@@ -150,10 +168,12 @@ object MemoPopup {
             hint = "이름 (예: 김OO 34평 관심)"; setSingleLine(true); setTextSize(TypedValue.COMPLEX_UNIT_SP, 14.5f)
             background = round(c, 0xFFF5F7F8.toInt(), 12f); setPadding(dp(c, 12f), dp(c, 9f), dp(c, 12f), dp(c, 9f))
         }
-        body.addView(nameEt, lp(10f))
+        val edit = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
+        editBox = edit
+        edit.addView(nameEt, lp(10f))
         histBox = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
         val sc = ScrollView(c).apply { addView(histBox); isVerticalScrollBarEnabled = true }
-        val maxH = (c.resources.displayMetrics.heightPixels * 0.30).toInt()
+        val maxH = (c.resources.displayMetrics.heightPixels * 0.28).toInt()
         body.addView(sc, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(c, 8f) })
         sc.viewTreeObserver.addOnGlobalLayoutListener {
             if (sc.height > maxH) sc.layoutParams = (sc.layoutParams as LinearLayout.LayoutParams).apply { height = maxH }
@@ -164,7 +184,7 @@ object MemoPopup {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 14.5f)
             background = round(c, 0xFFF5F7F8.toInt(), 12f); setPadding(dp(c, 12f), dp(c, 9f), dp(c, 12f), dp(c, 9f))
         }
-        body.addView(memoEt, lp(8f))
+        edit.addView(memoEt, lp(8f))
         val btns = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL }
         micTv = tv("🎤 말로 메모", 14.5f, SKY, true).apply {
             gravity = Gravity.CENTER; background = round(c, 0xFFE6F0FB.toInt(), 12f); setPadding(0, dp(c, 11f), 0, dp(c, 11f))
@@ -176,8 +196,14 @@ object MemoPopup {
         }
         btns.addView(micTv, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { rightMargin = dp(c, 8f) })
         btns.addView(save, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        body.addView(btns, lp(8f))
+        edit.addView(btns, lp(8f))
+        body.addView(edit)
         card.addView(body)
+        // 손잡이: 잡고 위아래로 끌면 창이 움직여요 (전화 받기 버튼이 가려질 때 위로 밀어 올리기)
+        val handle = tv("━━━   위·아래로 끌어서 옮기기   ━━━", 11.5f, 0xFF9AA8AE.toInt(), true).apply {
+            gravity = Gravity.CENTER; setPadding(0, dp(c, 10f), 0, dp(c, 2f))
+        }
+        card.addView(handle, lp(4f))
 
         // 작게 보기 (한 줄 띠)
         smallTv = tv("", 14f, Color.WHITE, true).apply {
@@ -193,7 +219,8 @@ object MemoPopup {
         val w = minOf(c.resources.displayMetrics.widthPixels - dp(c, 20f), dp(c, 460f))
         val p = WindowManager.LayoutParams(w, ViewGroup.LayoutParams.WRAP_CONTENT, type,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED,
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED,
             PixelFormat.TRANSLUCENT).apply {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
             y = dp(c, 36f)
@@ -209,7 +236,9 @@ object MemoPopup {
                     val dy = (e.rawY - downY).toInt()
                     if (Math.abs(dy) > dp(c, 6f)) moved = true
                     if (moved) {
-                        p.y = (startY + dy).coerceIn(0, c.resources.displayMetrics.heightPixels - dp(c, 80f))
+                        // 위로는 머리 부분만 남을 때까지, 아래로는 화면 끝 근처까지
+                        val minY = -((r.height - dp(c, 64f)).coerceAtLeast(0))
+                        p.y = (startY + dy).coerceIn(minY, c.resources.displayMetrics.heightPixels - dp(c, 80f))
                         runCatching { wm.updateViewLayout(r, p) }
                     }
                     moved
@@ -219,6 +248,7 @@ object MemoPopup {
             }
         }
         head.setOnTouchListener(drag)
+        handle.setOnTouchListener(drag)
         smallTv?.setOnTouchListener(drag)
 
         // 글 쓸 때만 키보드 받기 (평소엔 전화 화면 조작을 막지 않음)
@@ -280,7 +310,7 @@ object MemoPopup {
         val box = histBox ?: return
         box.removeAllViews()
         if (d != null && n == 0) {
-            box.addView(TextView(c).apply { text = "아직 메모가 없어요. 아래에 적거나 🎤로 말해 두면 다음 전화 때 여기 떠요."; setTextColor(MUTE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f) })
+            box.addView(TextView(c).apply { text = "아직 기록이 없어요. [✏️ 메모]를 눌러 적거나 🎤로 말해 두면 다음 전화 때 여기 떠요."; setTextColor(MUTE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f) })
         }
         for (i in 0 until n) {
             val m = items!!.optJSONObject(i) ?: continue

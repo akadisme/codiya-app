@@ -205,8 +205,8 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
                     ),
                     child: Text(
                       _allOn
-                          ? '✅ 준비 완료! 저장 안 된 번호와 통화가 끝나면 알림이 떠요.'
-                          : '아래 5가지를 켜면, 받은 전화가 끝나면 그 고객 메모창이, 통화가 끝나면 콜백문자 창이 떠요.',
+                          ? '✅ 준비 완료! 받은 전화·부재중 전화가 끝나면 콜백문자 창이 떠요.'
+                          : '아래 4가지를 켜면, 받은 전화·부재중 전화가 끝나면 콜백문자 창이 떠요.',
                       style: TextStyle(fontWeight: FontWeight.w700, color: _allOn ? mint : const Color(0xFF06665D)),
                     ),
                   ),
@@ -224,12 +224,12 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
                   }),
                   _step(3, '통화 후 확인 창 띄우기', '"다른 앱 위에 표시"에서 코디야를 켜주세요. 통화가 끝나면 화면 가운데 "콜백문자를 보내시겠습니까?" 창이 떠요. (끄면 알림줄로 알려줘요)\n\n💡 창이 떠 있는 동안 휴대폰이 "코디야가 다른 앱 위에 표시 중" 알림을 띄워요. 그 알림을 길게 눌러 [알림 끄기]를 하면 다시 안 떠요 (창은 그대로 잘 떠요)',
                       _overlay, '🪟 확인 창 켜기', coral, () => CallbackBridge.call('requestOverlay')),
-                  _step(4, '📒 전화 메모창', '받은 전화를 끊으면 그 고객 메모창이 떠요. 지난 메모를 보고 바로 적어 저장하면 고객스토리에 자동으로 남아요. 저장된 연락처도 되게 "통화 기록"(번호 확인만)을 허용해주세요.',
-                      _s['calllog'] == true && _s['mic'] == true, '📒 메모창 켜기', gold, () async {
+                  _step(4, '📇 저장된 연락처도 콜백', '"통화 기록" 권한을 허용하면 휴대폰에 저장해 둔 고객과 통화가 끝나도 콜백문자 창이 떠요. 걸려온 번호만 확인하고 통화 기록 목록은 읽지 않아요.',
+                      _s['calllog'] == true, '📇 통화 기록 허용', gold, () async {
                     await CallbackBridge.call('requestMemo');
                     await Future.delayed(const Duration(milliseconds: 600));
                     final s = await CallbackBridge.status();
-                    if ((s['calllog'] != true || s['mic'] != true) && mounted) await CallbackBridge.call('openAppSettings');
+                    if (s['calllog'] != true && mounted) await CallbackBridge.call('openAppSettings');
                   }),
                   _step(5, '문자 템플릿 만들기', (_s['templates'] ?? 0) > 0
                       ? '템플릿 ${_s['templates']}개가 알림 버튼으로 나와요. 코디야 [템플릿]에서 언제든 고치고 늘릴 수 있어요.'
@@ -315,7 +315,7 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
                   const Text(
                     '· 문자는 내 휴대폰 문자앱으로 나가요 (요금제의 문자 사용)\n'
                     '· 알림 버튼을 누르면 내용이 채워진 문자앱이 열려요. 보내기만 누르세요\n'
-                    '· 저장된 연락처와의 통화는 콜백문자 창이 뜨지 않아요 (메모창은 떠요)\n'
+                    '· 내가 건 전화에는 콜백문자 창이 뜨지 않아요\n'
                     '· 에이닷·갤럭시 AI 통화 요약에서 [공유] → "통화 메모에 저장"을 누르면 고객 스토리에 날짜별로 쌓여요',
                     style: TextStyle(color: Color(0xFF5B6870), fontSize: 13, height: 1.7),
                   ),

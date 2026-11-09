@@ -28,7 +28,10 @@ class PhoneStateReceiver : BroadcastReceiver() {
         if (state == TelephonyManager.EXTRA_STATE_RINGING) {
             @Suppress("DEPRECATION")
             val inc = CallbackStore.digits(intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER))
-            if (inc.length >= 8) MemoPopup.onRinging(context, inc)
+            if (inc.length >= 8) { // 저장된 연락처도 콜백 대상 (번호 확인 기능은 저장 안 된 번호만 알려줘서)
+                CallbackStore.addCallNum(context, inc)
+                CallbackStore.diag(context, "☎ 전화 옴 " + CallbackStore.pretty(inc))
+            }
             else if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_CALL_LOG) != android.content.pm.PackageManager.PERMISSION_GRANTED)
                 CallbackStore.diag(context, "☎ 전화 옴 · 번호를 못 받음 (휴대폰 설정 → 앱 → 코디야 → 권한 → '통화 기록' 허용 필요)")
         }
@@ -45,8 +48,7 @@ class PhoneStateReceiver : BroadcastReceiver() {
                 Thread { PermWatch.check(context.applicationContext) }.start() // 권한이 꺼졌으면 알림 (12시간에 한 번)
                 // 받은 전화가 끝났을 때만 메모창 (부재중·내가 건 전화는 안 띄움) · 3분 동안 안 쓰면 자동으로 닫힘
                 // (끝 신호가 두 번 와도 두 번째(ph=idle)는 아무것도 안 함 — 예전엔 여기서 번호를 지워 메모창이 안 떴음)
-                if (ph == "talking") MemoPopup.onCallEnded(context)
-                else if (ph == "ringing" || ph == "outgoing") MemoPopup.clearPending(context)
+                // (통화 후 메모창은 없앰 — 콜백문자 창만)
                 if (ph != "ringing" && ph != "talking") { if (ph == "outgoing") CallbackStore.takeCallNums(context); return }
                 val missed = ph == "ringing"
                 val nums = CallbackStore.takeCallNums(context)

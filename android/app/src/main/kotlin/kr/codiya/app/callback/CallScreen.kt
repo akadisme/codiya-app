@@ -19,7 +19,6 @@ class CallScreen : CallScreeningService() {
             val num = CallbackStore.digits(details.handle?.schemeSpecificPart)
             if (incoming && num.length >= 9) {
                 CallbackStore.addCallNum(this, num) // 통화 중 대기 전화도 차례로 쌓음
-                MemoPopup.onRinging(this, num)      // 📒 받기 전에 메모창
             }
         } catch (_: Exception) {
         }

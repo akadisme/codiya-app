@@ -286,7 +286,8 @@ object CallbackStore {
         val out = org.json.JSONArray()
         for (i in 0 until arr.length()) {
             val o = arr.optJSONObject(i) ?: continue
-            if (o.optString("n") != num && now - o.optLong("t") < 3 * 60 * 60 * 1000L) out.put(o)
+            if (o.optString("n").takeLast(8) == num.takeLast(8) && now - o.optLong("t") < 3 * 60 * 1000L) return // 같은 전화가 두 경로(번호 확인·전화 상태)로 와도 한 번만
+            if (now - o.optLong("t") < 3 * 60 * 60 * 1000L) out.put(o)
         }
         out.put(JSONObject().put("n", num).put("t", now))
         p.edit().putString("call_nums", out.toString()).apply()

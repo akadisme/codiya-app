@@ -13,13 +13,6 @@ import android.telephony.TelephonyManager
 class PhoneStateReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != TelephonyManager.ACTION_PHONE_STATE_CHANGED) return
-        CallbackStore.installCrashLog(context)
-        try { handle(context, intent) } catch (e: Exception) {
-            CallbackStore.diag(context, "⚠️ 전화 감지 중 오류: " + e.javaClass.simpleName + " " + (e.message ?: "").take(60))
-        }
-    }
-
-    private fun handle(context: Context, intent: Intent) {
         val state = intent.getStringExtra(TelephonyManager.EXTRA_STATE) ?: return
         val p = CallbackStore.prefs(context)
         val ph = p.getString("ph", "idle") ?: "idle"
@@ -28,28 +21,30 @@ class PhoneStateReceiver : BroadcastReceiver() {
         if (state == TelephonyManager.EXTRA_STATE_RINGING) {
             @Suppress("DEPRECATION")
             val inc = CallbackStore.digits(intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER))
-            if (inc.length >= 8) { // 저장된 연락처도 콜백 대상 (번호 확인 기능은 저장 안 된 번호만 알려줘서)
-                CallbackStore.addCallNum(context, inc)
-                CallbackStore.diag(context, "☎ 전화 옴 " + CallbackStore.pretty(inc))
-            }
-            else if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_CALL_LOG) != android.content.pm.PackageManager.PERMISSION_GRANTED)
-                CallbackStore.diag(context, "☎ 전화 옴 · 번호를 못 받음 (휴대폰 설정 → 앱 → 코디야 → 권한 → '통화 기록' 허용 필요)")
+            if (inc.length >= 8) MemoPopup.onRinging(context, inc)
         }
         when (state) {
             TelephonyManager.EXTRA_STATE_RINGING ->
                 if (ph == "talking") p.edit().putBoolean("ph_wait", true).apply() // 통화 중 대기 전화
                 else p.edit().putString("ph", "ringing").putLong("ph_at", now).apply()
-            TelephonyManager.EXTRA_STATE_OFFHOOK ->
+            TelephonyManager.EXTRA_STATE_OFFHOOK -> {
+                MemoNotify.stopRinging() // 받으면 알림 다시 띄우기 멈춤
+                MemoPopup.onTalking(context) // 통화 중 "📒 메모 보기·쓰기" 알림
                 if (ph == "ringing") p.edit().putString("ph", "talking").apply()
                 else if (ph != "talking") p.edit().putString("ph", "outgoing").apply() // 내가 건 전화
+            }
             TelephonyManager.EXTRA_STATE_IDLE -> {
+                MemoNotify.stopRinging()
+                MemoNotify.hideTalking(context)
+                MemoActivity.finishOnCallEnd() // 위쪽 반 화면 메모는 닫고 (적던 건 저장) → 끊은 뒤 메모창
+                MemoPopup.onCallEnd(context) // 끊으면 그 번호 메모창 (띄우면 알림은 지움)
+                if (ph == "talking") Rec.afterCall(context) // 🎙 통화녹음 AI 요약 (켜둔 경우만)
                 // 모든 통화가 끝났을 때 한 번만 옴 (같은 알림이 두 번 와도 한 번만 처리)
                 p.edit().putString("ph", "idle").putBoolean("ph_wait", false).apply()
-                Thread { PermWatch.check(context.applicationContext) }.start() // 권한이 꺼졌으면 알림 (12시간에 한 번)
-                // 받은 전화가 끝났을 때만 메모창 (부재중·내가 건 전화는 안 띄움) · 3분 동안 안 쓰면 자동으로 닫힘
-                // (끝 신호가 두 번 와도 두 번째(ph=idle)는 아무것도 안 함 — 예전엔 여기서 번호를 지워 메모창이 안 떴음)
-                // (통화 후 메모창은 없앰 — 콜백문자 창만)
-                if (ph != "ringing" && ph != "talking") { if (ph == "outgoing") CallbackStore.takeCallNums(context); return }
+                if (ph != "ringing" && ph != "talking") {
+                    if (ph == "outgoing") { CallbackStore.takeCallNums(context); MemoPopup.onOutgoingEnd(context) } // 📞 발신 후 메모창 (설정에서 켠 경우만)
+                    return
+                }
                 val missed = ph == "ringing"
                 val nums = CallbackStore.takeCallNums(context)
                 if (nums.isEmpty()) {

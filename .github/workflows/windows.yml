@@ -1,0 +1,49 @@
+name: PC 전화 메모 프로그램 빌드
+
+on:
+  push:
+    branches: [main]
+    paths: ['windows/**', '.github/workflows/windows.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 프로그램 만들기
+        working-directory: windows
+        run: |
+          dotnet build CodiyaMemo/CodiyaMemo.csproj -c Release -o publish
+          Remove-Item publish\*.pdb -ErrorAction SilentlyContinue
+          Get-ChildItem -Recurse publish | Select-Object FullName, Length
+
+      - name: 설치 파일 만들기 (Inno Setup)
+        working-directory: windows
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer.iss
+          Get-ChildItem out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codiya-memo-pc-${{ github.run_number }}
+          path: windows/out/CodiyaMemoSetup.exe
+          retention-days: 30
+
+      - name: 설치 파일을 builds-pc 브랜치에 보관
+        shell: bash
+        run: |
+          mkdir -p /tmp/out && cp windows/out/CodiyaMemoSetup.exe /tmp/out/
+          cd /tmp/out
+          git init -q -b builds-pc
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          echo "pc build ${{ github.run_number }} / ${{ github.sha }}" > BUILD.txt
+          git add -A && git commit -q -m "pc build ${{ github.run_number }}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" builds-pc

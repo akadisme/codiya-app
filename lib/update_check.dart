@@ -52,7 +52,7 @@ class UpdateCheck {
           fromStore = (await _ch.invokeMethod('installer')) == 'com.android.vending';
         } catch (_) {}
       }
-      final url = (fromStore ? j['store_url'] : j['download_url'])?.toString() ?? '$siteUrl/app/';
+      final url = (fromStore ? j['store_url'] : j['download_url'])?.toString() ?? '$apiBase/app.html';
 
       if (!must) {
         final p = await SharedPreferences.getInstance();

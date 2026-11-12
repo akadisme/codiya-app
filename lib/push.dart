@@ -102,7 +102,7 @@ class PushService {
   Future<void> _setSiteCookie(String t) async {
     try {
       await WebViewCookieManager().setCookie(
-        WebViewCookie(name: 'cd_device', value: t, domain: '.codiya.kr', path: '/'),
+        WebViewCookie(name: 'gr_device', value: t, domain: '.codiya.kr', path: '/'),
       );
     } catch (e) {
       debugPrint('쿠키 설정 실패: $e');

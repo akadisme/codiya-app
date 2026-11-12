@@ -7,8 +7,11 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <!-- 📒 전화 메모창: 저장된 연락처에서 온 전화도 번호 확인 (통화 기록 내용은 읽지 않음) -->
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
-    <!-- 📒 🎤 말로 메모 (받아쓰기) -->
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- 📒 위쪽 메모 화면의 [📞 전화 받기] 버튼 -->
+    <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
+    <!-- 🎙 통화녹음 AI 요약: 휴대폰 자동녹음 파일 읽기 -->
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
 
     <application
         android:label="코디야"
@@ -58,6 +61,35 @@
             </intent-filter>
         </activity>
 
+        <!-- 📒 위쪽 반 화면 메모 (울릴 때·통화 중 알림을 누르면) -->
+        <activity
+            android:name=".callback.MemoActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity="kr.codiya.app.memo"
+            android:launchMode="singleTask"
+            android:showWhenLocked="true"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!-- 📇 명함만 찍어서 등록 (AI가 번호 읽기) -->
+        <activity
+            android:name=".callback.CardActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!-- 🤖 통화요약 자동 저장 (에이닷·익시오·갤럭시 AI 요약 알림 읽기) -->
+        <service
+            android:name=".callback.SummaryListener"
+            android:exported="true"
+            android:label="코디야 통화요약 저장"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
         <!-- 콜백문자: 문자앱 열기용 투명 화면 -->
         <activity
             android:name=".callback.CallbackSendActivity"
@@ -86,15 +118,6 @@
             </intent-filter>
         </receiver>
 
-        <!-- 앱 업데이트 뒤 권한이 꺼졌는지 확인 → 알림 -->
-        <receiver
-            android:name=".callback.PermWatch"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
-            </intent-filter>
-        </receiver>
-
         <meta-data android:name="flutterEmbedding" android:value="2" />
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
@@ -108,10 +131,6 @@
     </application>
 
     <queries>
-        <!-- 휴대폰에 깔린 전화앱 목록 확인용 (감지 기록에 기본 전화앱 표시) -->
-        <intent>
-            <action android:name="android.intent.action.DIAL" />
-        </intent>
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />

@@ -16,26 +16,6 @@ class CallbackBridge {
     } catch (_) {}
   }
 
-  /// 감지 기록 전체 (버전·권한·기본 전화앱·기록·오류)
-  static Future<String> diagText() async {
-    if (!Platform.isAndroid) return '';
-    try {
-      return '${await _ch.invokeMethod('diagText') ?? ''}';
-    } catch (_) {
-      return '';
-    }
-  }
-
-  /// 알림을 눌러 앱이 열렸을 때 열어야 할 주소 (없으면 '')
-  static Future<String> takeOpen() async {
-    if (!Platform.isAndroid) return '';
-    try {
-      return '${await _ch.invokeMethod('takeOpen') ?? ''}';
-    } catch (_) {
-      return '';
-    }
-  }
-
   static Future<Map<String, dynamic>> status() async {
     if (!Platform.isAndroid) return {};
     try {
@@ -107,7 +87,7 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
 
   void _manage() {
     Navigator.of(context).popUntil((r) => r.isFirst);
-    widget.onOpenLink('$siteUrl/my/app_setting.php');
+    widget.onOpenLink('$siteUrl/appapi/callback.php');
   }
 
   Widget _btn(String label, Color color, VoidCallback? onTap, {IconData? icon, bool soft = false}) {
@@ -140,7 +120,7 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
                     style: TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 15.5,
-                        color: onTap == null ? const Color(0xFF7A878E) : (soft ? color : Colors.white))),
+                        color: onTap == null ? const Color(0xFF9A968E) : (soft ? color : Colors.white))),
               ]),
             ),
           ),
@@ -193,7 +173,7 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
           : !Platform.isAndroid || _s['supported'] != true
               ? const Padding(
                   padding: EdgeInsets.all(24),
-                  child: Text('통화 감지는 안드로이드 10 이상에서 쓸 수 있어요.\n코디야 웹에서 문자 보내기는 계속 쓸 수 있어요.'),
+                  child: Text('통화 감지는 안드로이드 10 이상에서 쓸 수 있어요.\n홈페이지의 "직접 보내기"는 계속 쓸 수 있어요.'),
                 )
               : ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 32), children: [
                   Container(
@@ -205,9 +185,9 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
                     ),
                     child: Text(
                       _allOn
-                          ? '✅ 준비 완료! 받은 전화·부재중 전화가 끝나면 콜백문자 창이 떠요.'
-                          : '아래 4가지를 켜면, 받은 전화·부재중 전화가 끝나면 콜백문자 창이 떠요.',
-                      style: TextStyle(fontWeight: FontWeight.w700, color: _allOn ? mint : const Color(0xFF06665D)),
+                          ? '✅ 준비 완료! 저장 안 된 번호와 통화가 끝나면 알림이 떠요.'
+                          : '아래 6가지를 켜면, 전화가 올 때 메모창이 뜨고 통화가 끝나면 현장 안내 문자를 바로 보낼 수 있어요.',
+                      style: TextStyle(fontWeight: FontWeight.w700, color: _allOn ? mint : const Color(0xFF7A5A1C)),
                     ),
                   ),
                   _step(1, '걸려온 번호 확인', '"기본 발신번호 표시 및 스팸 앱으로 설정하시겠습니까?" 창에서 [기본으로 설정]을 눌러주세요. 전화 걸기·받기·통화에는 영향이 없어요. 저장 안 된 번호인지만 확인해요. (후후·T전화·알린다 같은 발신자 표시 앱의 표시 기능은 꺼질 수 있어요)',
@@ -222,20 +202,29 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
                       await CallbackBridge.call('openAppSettings');
                     }
                   }),
-                  _step(3, '통화 후 확인 창 띄우기', '"다른 앱 위에 표시"에서 코디야를 켜주세요. 통화가 끝나면 화면 가운데 "콜백문자를 보내시겠습니까?" 창이 떠요. (끄면 알림줄로 알려줘요)\n\n💡 창이 떠 있는 동안 휴대폰이 "코디야가 다른 앱 위에 표시 중" 알림을 띄워요. 그 알림을 길게 눌러 [알림 끄기]를 하면 다시 안 떠요 (창은 그대로 잘 떠요)',
+                  _step(3, '통화 후 확인 창 띄우기', '"다른 앱 위에 표시"에서 코디야를 켜주세요. 통화가 끝나면 화면 가운데 "콜백문자를 보내시겠습니까?" 창이 떠요. (끄면 알림줄로 알려줘요)',
                       _overlay, '🪟 확인 창 켜기', coral, () => CallbackBridge.call('requestOverlay')),
-                  _step(4, '📇 저장된 연락처도 콜백', '"통화 기록" 권한을 허용하면 휴대폰에 저장해 둔 고객과 통화가 끝나도 콜백문자 창이 떠요. 걸려온 번호만 확인하고 통화 기록 목록은 읽지 않아요.',
-                      _s['calllog'] == true, '📇 통화 기록 허용', gold, () async {
+                  _step(4, '📒 전화 메모창', '전화가 울리면 위쪽 알림으로 그 고객의 지난 메모가 보여요. 알림을 누르면 위쪽 반 화면에 메모가 열리고 아래 전화 화면으로 그대로 받을 수 있어요. 통화 중에도 "📒 메모 보기·쓰기" 알림을 누르면 열려요. 끊으면 메모창이 떠요. 🖥 PC 홈페이지에서 [PC 메모창]을 켜두면 PC에도 같이 떠요. 저장된 연락처도 보이게 "통화 기록"(걸려온 번호 확인만)을 허용해주세요. 메모는 키보드의 🎤 마이크로 말해서 적을 수도 있어요.',
+                      _s['calllog'] == true, '📒 메모창 켜기', gold, () async {
                     await CallbackBridge.call('requestMemo');
                     await Future.delayed(const Duration(milliseconds: 600));
                     final s = await CallbackBridge.status();
                     if (s['calllog'] != true && mounted) await CallbackBridge.call('openAppSettings');
                   }),
-                  _step(5, '문자 템플릿 만들기', (_s['templates'] ?? 0) > 0
-                      ? '템플릿 ${_s['templates']}개가 알림 버튼으로 나와요. 코디야 [템플릿]에서 언제든 고치고 늘릴 수 있어요.'
+                  _step(5, '🤖 통화요약 자동 저장', '에이닷·익시오·갤럭시 AI 등에서 통화요약 알림이 오면, 방금 통화한 고객 메모에 자동으로 저장돼요. "알림 읽기"에서 코디야를 켜주세요. (요약 알림만 저장하고, 다른 알림은 저장하지 않아요. 요약 기능을 안 쓰면 건너뛰어도 돼요)',
+                      _s['summary'] == true, '🤖 자동 저장 켜기', const Color(0xFF3A86D8), () => CallbackBridge.call('requestSummary')),
+                  _step(6, '📇 명함 등록 (AI가 읽어요)', '고객 명함을 찍으면 AI가 이름·회사·전화번호를 읽어서 그 번호 고객에 자동으로 붙여요. 그 고객이 전화하면 받기 전에 명함이 보여요. (통화 중 메모 화면의 [📇 명함] 버튼으로도 등록할 수 있어요)',
+                      false, '📇 명함 찍어서 등록', const Color(0xFF0AA394), () => CallbackBridge.call('cardRegister')),
+                  _step(7, '🎙 통화녹음 AI 요약', '휴대폰 전화 앱의 "통화 자동 녹음"을 켜두면, 통화가 끝난 뒤 녹음을 AI가 받아써서 한 줄 요약과 함께 고객 메모에 저장해요. 녹음 파일은 요약 후 서버에 남기지 않아요. (에이닷·갤럭시 AI 요약을 안 쓰는 분께 추천)',
+                      false, _s['rec'] == true ? '🎙 켜져 있어요 (누르면 끄기)' : '🎙 녹음 요약 켜기', const Color(0xFF7A5AF8),
+                      () async { await CallbackBridge.call('recOn', {'on': _s['rec'] != true}); await _refresh(); }),
+                  _step(8, '🔋 배터리 "제한 없음"', '삼성 배터리 절약이 뒤에서 인터넷을 막으면 전화가 올 때 고객 메모를 못 불러와요. 앱 정보에서 [배터리] → "제한 없음", [모바일 데이터] → "백그라운드 데이터 사용 허용"을 켜주세요.',
+                      _s['battery'] == true && _s['saver'] != true, '🔋 앱 정보 열기', mint, () => CallbackBridge.call('openBattery')),
+                  _step(9, '문자 템플릿 만들기', (_s['templates'] ?? 0) > 0
+                      ? '템플릿 ${_s['templates']}개가 알림 버튼으로 나와요. 현장이 여러 개면 홈페이지에서 템플릿을 늘릴 수 있어요.'
                       : (_s['linked'] == true
-                          ? '코디야 [템플릿]에서 콜백문자 템플릿을 1개 만들어주세요.'
-                          : '코디야에 로그인하면 내 템플릿을 불러와요.'),
+                          ? '홈페이지에서 현장 안내 문자(템플릿)를 1개 만들어주세요. 자동 알림까지 무료예요.'
+                          : '홈페이지에 로그인하면 내 템플릿을 불러와요.'),
                       (_s['templates'] ?? 0) > 0, '✏️ 템플릿 만들기', violet, _manage),
                   const SizedBox(height: 6),
                   _btn(_overlay ? '🔔 테스트 창 띄워보기' : '🔔 테스트 알림 보기', mint, _allOn ? () async {
@@ -245,7 +234,7 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
                         content: Text('잠시 후 확인 창(또는 알림)이 떠요 · 테스트 번호 010-0000-0000')));
                   } : null),
                   const SizedBox(height: 10),
-                  _btn('콜백문자 설정 · 템플릿', sky, _manage, soft: true),
+                  _btn('템플릿·설정·발송내역·이용권', sky, _manage, soft: true),
                   if ((_s['diag'] ?? '').toString().isNotEmpty) ...[
                     const SizedBox(height: 16),
                     Container(
@@ -255,59 +244,16 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Row(children: [
                           const Expanded(child: Text('🔎 최근 통화 감지 기록', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5))),
-                          TextButton.icon(
-                            onPressed: () async {
-                              final info = '${appUserAgentSuffix.trim()} · 확인 창 ${_overlay ? '켜짐' : '꺼짐'} · 통화 기록 ${_s['calllog'] == true ? '허용' : '안 됨'}'
-                                  ' · 전화 ${_s['phone'] == true ? '허용' : '안 됨'} · 번호 확인 ${_s['role'] == true ? '켜짐' : '꺼짐'}\n\n${_s['diag']}'
-                                  '${(_s['crash'] ?? '').toString().isNotEmpty ? '\n\n[마지막 오류]\n${_s['crash']}' : ''}';
-                              final full = await CallbackBridge.diagText();
-                              await Clipboard.setData(ClipboardData(text: full.isNotEmpty ? full : info));
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('복사했어요. 채팅창에 붙여넣기 해 주세요.')));
-                              }
+                          TextButton(
+                            onPressed: () {
+                              Clipboard.setData(ClipboardData(text: '${_s['phone_state'] ?? ''}\n\n${_s['diag']}'));
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('📋 복사했어요 · PC 홈페이지 [발송내역] 탭에서도 볼 수 있어요')));
                             },
-                            icon: const Icon(Icons.copy, size: 16),
-                            label: const Text('복사'),
+                            child: const Text('📋 복사'),
                           ),
                         ]),
                         const SizedBox(height: 6),
-                        SelectableText(_s['diag'].toString(), style: const TextStyle(fontSize: 13, height: 1.6, color: Color(0xFF3B4850))),
-                        if (_s['calllog'] != true) ...[
-                          const SizedBox(height: 12),
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(color: const Color(0xFFFFF4E5), borderRadius: BorderRadius.circular(12)),
-                            child: const Text(
-                              '📞 "통화 기록" 권한이 없어서 전화 온 번호를 못 받고 있어요. 번호를 알아야 그 고객의 지난 메모를 보여줄 수 있어요.\n'
-                              '아래 버튼 → [허용]을 눌러 주세요. 창이 안 뜨면 설정 화면에서 권한 → 통화 기록 → 허용.\n'
-                              '(허용이 회색이면: 앱 정보 → 오른쪽 위 ⋮ → [제한된 설정 허용] 후 다시)',
-                              style: TextStyle(fontSize: 13, height: 1.6, color: Color(0xFF7A4B00)),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          _btn('📞 통화 기록 권한 켜기', coral, () async {
-                            await CallbackBridge.call('requestMemo');
-                            await Future.delayed(const Duration(milliseconds: 1500));
-                            final s2 = await CallbackBridge.status();
-                            if (s2['calllog'] != true && mounted) await CallbackBridge.call('openAppSettings');
-                            if (mounted) _refresh();
-                          }),
-                        ],
-                        if (!_overlay) ...[
-                          const SizedBox(height: 12),
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(color: const Color(0xFFFFF4E5), borderRadius: BorderRadius.circular(12)),
-                            child: const Text(
-                              '🪟 지금은 "확인 창" 권한이 꺼져 있어서 통화가 끝나면 알림줄로만 알려줘요.\n'
-                              '아래 버튼을 눌러 코디야 스위치를 켜면, 알림을 누를 필요 없이 화면 가운데 "콜백문자를 보내시겠습니까?" 창이 바로 떠서 [보내기] 한 번이면 끝나요.\n'
-                              '(스위치가 회색이면: 앱 정보 → 오른쪽 위 ⋮ → [제한된 설정 허용] 후 다시)',
-                              style: TextStyle(fontSize: 13, height: 1.6, color: Color(0xFF7A4B00)),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          _btn('🪟 확인 창 권한 켜기', coral, () => CallbackBridge.call('requestOverlay')),
-                        ],
+                        SelectableText('${_s['phone_state'] ?? ''}\n\n${_s['diag']}', style: const TextStyle(fontSize: 13, height: 1.6, color: Color(0xFF3B4850))),
                       ]),
                     ),
                   ],
@@ -315,14 +261,14 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
                   const Text(
                     '· 문자는 내 휴대폰 문자앱으로 나가요 (요금제의 문자 사용)\n'
                     '· 알림 버튼을 누르면 내용이 채워진 문자앱이 열려요. 보내기만 누르세요\n'
-                    '· 내가 건 전화에는 콜백문자 창이 뜨지 않아요\n'
-                    '· 에이닷·갤럭시 AI 통화 요약에서 [공유] → "통화 메모에 저장"을 누르면 고객 스토리에 날짜별로 쌓여요',
+                    '· 저장된 연락처와의 통화는 콜백문자 창이 뜨지 않아요 (메모창은 떠요)\n'
+                    '· 에이닷·갤럭시 AI 통화 요약에서 [공유] → "통화 메모에 저장"을 누르면 고객 메모에 날짜별로 쌓여요',
                     style: TextStyle(color: Color(0xFF5B6870), fontSize: 13, height: 1.7),
                   ),
                   if (_s['linked'] == false)
                     Padding(
                       padding: const EdgeInsets.only(top: 12),
-                      child: Text('⚠️ 아직 코디야 로그인이 연결되지 않았어요. 앱에서 코디야에 로그인해주세요.',
+                      child: Text('⚠️ 아직 홈페이지 로그인이 연결되지 않았어요. 앱에서 홈페이지에 로그인해주세요.',
                           style: TextStyle(color: coral, fontWeight: FontWeight.w700)),
                     ),
                 ]),

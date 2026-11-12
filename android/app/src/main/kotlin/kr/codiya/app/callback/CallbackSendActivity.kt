@@ -22,7 +22,6 @@ class CallbackSendActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        CallbackStore.installCrashLog(this)
         val listJson = intent.getStringExtra("list")
         if (listJson == null) { // 바로 보내기
             send(intent.getStringExtra("num") ?: "", intent.getIntExtra("tpl_id", 0), intent.getStringExtra("text") ?: "",
@@ -30,13 +29,17 @@ class CallbackSendActivity : Activity() {
             return
         }
         NotificationManagerCompat.from(this).cancel(CallbackNotifier.notiId(intent.getStringExtra("num") ?: ""))
-        val needOverlay = !CallbackPopup.canShow(this)
+        val needOverlay = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)
         if (needOverlay) {
             setContentView(CallbackPopup.buildGuide(this,
                 onLater = { showConfirm() },
                 onOk = {
                     waitingOverlay = true
-                    if (!CallbackStore.openOverlaySettings(this)) { waitingOverlay = false; showConfirm() }
+                    try {
+                        startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+                    } catch (_: Exception) {
+                        waitingOverlay = false; showConfirm()
+                    }
                 }))
         } else {
             showConfirm()

@@ -14,7 +14,7 @@ import java.util.Locale
 
 /** 콜백문자 저장소: 기기 토큰, 서버 설정(캐시), 통화 상태, 오늘 보낸 번호, 보낼 기록 */
 object CallbackStore {
-    private const val PREFS = "cd_callback"
+    private const val PREFS = "gr_callback"
 
     fun prefs(c: Context): SharedPreferences = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
@@ -32,22 +32,11 @@ object CallbackStore {
         return if (rest.startsWith("82") && rest.length >= 11) "0" + rest.substring(2) else rest
     }
 
-    /** (예전엔 가린 번호) 이제는 서버에도 전체 번호로 보냄 → 서버·앱 표시 모양 같게 */
-    fun mask(d: String): String = pretty(d)
-
-    /** 화면에 보여줄 전체 번호 (가림 없이): 010-1234-5678 · 투넘버는 *281 010-1234-5678 */
-    fun pretty(d: String): String {
+    fun mask(d: String): String {
         val m = Regex("^([*#]\\d{3})(\\d{7,})$").find(d)
-        if (m != null) return m.groupValues[1] + " " + pretty(m.groupValues[2])
+        if (m != null) return m.groupValues[1] + "-" + mask(m.groupValues[2])
         val n = d.filter { it.isDigit() }
-        return when {
-            n.length == 11 -> n.substring(0, 3) + "-" + n.substring(3, 7) + "-" + n.substring(7)
-            n.length == 10 && n.startsWith("02") -> n.substring(0, 2) + "-" + n.substring(2, 6) + "-" + n.substring(6)
-            n.length == 10 -> n.substring(0, 3) + "-" + n.substring(3, 6) + "-" + n.substring(6)
-            n.length == 9 && n.startsWith("02") -> n.substring(0, 2) + "-" + n.substring(2, 5) + "-" + n.substring(5)
-            n.length == 8 -> n.substring(0, 4) + "-" + n.substring(4)
-            else -> n
-        }
+        return if (n.length < 7) "***" else n.substring(0, 3) + "-****-" + n.takeLast(4)
     }
 
     fun hash(d: String): String {
@@ -56,88 +45,52 @@ object CallbackStore {
     }
 
     /** 최근 통화 감지 결과 (설정 화면에 표시 → 창이 안 뜬 이유 확인용) */
-    /** 앱이 멈추면(오류) 그 이유를 '최근 통화 감지 기록'에 남김 → 화면 캡처로 원인 확인 */
-    @Volatile private var crashOn = false
-    fun installCrashLog(c: Context) {
-        if (crashOn) return
-        crashOn = true
-        val app = c.applicationContext
-        val prev = Thread.getDefaultUncaughtExceptionHandler()
-        Thread.setDefaultUncaughtExceptionHandler { t, e ->
-            try {
-                val at = e.stackTrace.firstOrNull { it.className.startsWith("kr.codiya") } ?: e.stackTrace.firstOrNull()
-                val msg = "⚠️ 앱 오류: " + e.javaClass.simpleName + " " + (e.message ?: "").take(70) + (if (at != null) " @" + at.fileName + ":" + at.lineNumber else "")
-                val tm = SimpleDateFormat("MM/dd HH:mm", Locale.KOREA).format(Date())
-                val old = prefs(app).getString("diag", "") ?: ""
-                val lines = ("$tm  $msg\n" + old).lines().filter { it.isNotBlank() }.take(8)
-                prefs(app).edit().putString("diag", lines.joinToString("\n"))
-                    .putString("crash", tm + " " + android.util.Log.getStackTraceString(e).take(3000)).commit()
-            } catch (_: Throwable) {}
-            prev?.uncaughtException(t, e)
-        }
-    }
-
     fun diag(c: Context, msg: String) {
         val t = SimpleDateFormat("MM/dd HH:mm", Locale.KOREA).format(Date())
         val old = prefs(c).getString("diag", "") ?: ""
-        val lines = ("$t  $msg\n" + old).lines().filter { it.isNotBlank() }.take(8)
+        val lines = ("$t  $msg\n" + old).lines().filter { it.isNotBlank() }.take(20)
         prefs(c).edit().putString("diag", lines.joinToString("\n")).apply()
-        reportDiagSoon(c)
-    }
-
-    /** 감지 기록을 서버로 → PC 콜백문자 화면(휴대폰 설정 방법 탭)에서 보고 복사 */
-    @Volatile private var reportAt = 0L
-    fun reportDiagSoon(c: Context) {
         val app = c.applicationContext
-        val now = System.currentTimeMillis()
-        if (now - reportAt < 4000L) return // 잠깐 사이 여러 줄이면 한 번만
-        reportAt = now
-        Thread {
-            try {
-                Thread.sleep(3000L)
-                reportDiag(app)
-            } catch (_: Exception) {}
-        }.start()
+        Thread { uploadDiag(app) }.start()
     }
 
-    fun diagText(c: Context): String {
-        val p = prefs(c)
-        fun ok(perm: String) = androidx.core.content.ContextCompat.checkSelfPermission(c, perm) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    /** 휴대폰 상태 한 줄 (권한·배터리·데이터 절약) — PC에서 같이 보이게 */
+    fun phoneState(c: Context): String {
+        val ver = runCatching { c.packageManager.getPackageInfo(c.packageName, 0).versionName }.getOrNull() ?: "?"
+        val pm = c.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+        val batt = if (android.os.Build.VERSION.SDK_INT >= 23) pm.isIgnoringBatteryOptimizations(c.packageName) else true
+        val cm = c.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        val saver = android.os.Build.VERSION.SDK_INT >= 24 && cm.restrictBackgroundStatus == android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED
+        fun ok(p: String) = c.checkSelfPermission(p) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        val overlay = android.os.Build.VERSION.SDK_INT < 23 || android.provider.Settings.canDrawOverlays(c)
         var role = false
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
             val rm = c.getSystemService(android.app.role.RoleManager::class.java)
             role = rm != null && rm.isRoleHeld(android.app.role.RoleManager.ROLE_CALL_SCREENING)
         }
-        val ver = runCatching { c.packageManager.getPackageInfo(c.packageName, 0).versionName }.getOrNull() ?: ""
-        val head = "코디야 앱 v" + ver + " · 안드로이드 " + android.os.Build.VERSION.RELEASE + " · " + android.os.Build.MODEL +
-            "\n확인 창 " + (if (CallbackPopup.canShow(c)) "켜짐" else "꺼짐") +
-            " · 통화 기록 " + (if (ok(android.Manifest.permission.READ_CALL_LOG)) "허용" else "안 됨") +
-            " · 전화 " + (if (ok(android.Manifest.permission.READ_PHONE_STATE)) "허용" else "안 됨") +
-            " · 번호 확인 " + (if (role) "켜짐" else "꺼짐")
-        // 기본 전화앱과 깔린 전화앱들 (삼성 '간단한 팝업' 설정은 기본 전화앱이 삼성 '전화'일 때만 먹혀요)
-        val pm = c.packageManager
-        fun label(pkg: String?): String = if (pkg.isNullOrEmpty()) "?" else runCatching { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() + " (" + pkg + ")" }.getOrDefault(pkg)
-        val defDialer = runCatching { (c.getSystemService(Context.TELECOM_SERVICE) as android.telecom.TelecomManager).defaultDialerPackage }.getOrNull()
-        val dialers = runCatching {
-            pm.queryIntentActivities(android.content.Intent(android.content.Intent.ACTION_DIAL), 0).map { it.activityInfo.packageName }.distinct().map { label(it) }
-        }.getOrDefault(emptyList())
-        val dial = "\n기본 전화앱: " + label(defDialer) + (if (dialers.isNotEmpty()) "\n깔린 전화앱: " + dialers.joinToString(", ") else "")
-        val crash = p.getString("crash", "") ?: ""
-        return head + dial + "\n\n" + (p.getString("diag", "") ?: "") + (if (crash.isNotEmpty()) "\n\n[마지막 오류]\n" + crash.take(1500) else "")
+        fun yn(b: Boolean) = if (b) "O" else "X"
+        return "앱 $ver · 안드로이드 ${android.os.Build.VERSION.RELEASE} · ${android.os.Build.MODEL}\n" +
+            "번호확인 ${yn(role)} · 전화권한 ${yn(ok(android.Manifest.permission.READ_PHONE_STATE))} · 통화기록 ${yn(ok(android.Manifest.permission.READ_CALL_LOG))} · " +
+            "확인창 ${yn(overlay)} · 요약저장 ${yn(SummaryListener.enabled(c))} · 전화받기 ${yn(android.os.Build.VERSION.SDK_INT < 26 || ok(android.Manifest.permission.ANSWER_PHONE_CALLS))} · 배터리 제한없음 ${yn(batt)} · 데이터절약 ${if (saver) "켜짐(막힘)" else "꺼짐"}"
     }
 
-    fun reportDiag(c: Context) {
-        val token = prefs(c).getString("token", null) ?: return
+    /** 기록을 서버로 (PC 홈페이지에서 보고 복사) — 백그라운드에서, 실패하면 다음에 */
+    @Synchronized
+    fun uploadDiag(c: Context) {
+        val p = prefs(c)
+        val token = p.getString("token", null) ?: return
+        val text = phoneState(c) + "\n\n" + (p.getString("diag", "") ?: "")
+        if (text == p.getString("diag_sent", "")) return
         try {
-            val con = (URL(api(c) + "/v1/diag").openConnection() as HttpURLConnection).apply {
-                requestMethod = "POST"; doOutput = true; connectTimeout = 5000; readTimeout = 10000
+            val con = (URL(api(c) + "/v1/callback/diag").openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"; doOutput = true; connectTimeout = 6000; readTimeout = 9000
                 setRequestProperty("Content-Type", "application/json")
             }
-            val o = JSONObject().put("token", token).put("text", diagText(c))
-            con.outputStream.use { it.write(o.toString().toByteArray()) }
-            con.responseCode
+            con.outputStream.use { it.write(JSONObject().put("token", token).put("text", text).toString().toByteArray()) }
+            if (con.responseCode in 200..299) p.edit().putString("diag_sent", text).apply()
             con.disconnect()
-        } catch (_: Exception) {}
+        } catch (_: Exception) {
+        }
     }
 
     // ---------- 전화 메모 ----------
@@ -146,117 +99,88 @@ object CallbackStore {
         val d = num.replace(Regex("^[*#]\\d{3}"), "").filter { it.isDigit() }
         if (d.length < 8) return ""
         val md = MessageDigest.getInstance("SHA-1").digest("grmemo|$d".toByteArray())
-        val k = md.joinToString("") { "%02x".format(it) }
-        keyNum[k] = d
-        return k
+        return md.joinToString("") { "%02x".format(it) }
     }
 
-    /** 코디야: 메모 키 → 실제 번호 (코디야 연락처·고객 스토리와 연결하려고 서버에 번호를 함께 보냄) */
-    private val keyNum = java.util.concurrent.ConcurrentHashMap<String, String>()
-    private fun numOf(c: Context, key: String): String {
-        val n = keyNum[key]
-        if (n != null) { prefs(c).edit().putString("num_$key", n).apply(); return n }
-        return prefs(c).getString("num_$key", "") ?: ""
-    }
+    fun api(c: Context): String = prefs(c).getString("api", "https://api.codiya.kr") ?: "https://api.codiya.kr"
 
-    /** '다른 앱 위에 표시' 설정 열기: 코디야 전용 화면 → 전체 목록 → 앱 정보 순서로 시도 */
-    fun openOverlaySettings(a: android.app.Activity): Boolean {
-        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.M) return false
-        val tries = listOf(
-            android.content.Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:" + a.packageName)),
-            android.content.Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION),
-            android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:" + a.packageName)),
-        )
-        for (i in tries) {
-            try { a.startActivity(i); return true } catch (_: Exception) {}
+    /**
+     * 메모 불러오기 — 백그라운드에서. 절대 null 아님:
+     *  성공 → 서버 내용 / 실패 → 저장해둔 것, 없으면 빈 메모 + "_err"(이유) — 화면이 '불러오는 중'에 멈추지 않게
+     */
+    fun memoGet(c: Context, key: String, mask: String, call: Boolean, num: String = ""): JSONObject {
+        fun fail(why: String): JSONObject {
+            diag(c, "메모 불러오기 실패 · $why")
+            return (memoCached(c, key) ?: JSONObject().put("ok", true).put("name", "").put("calls", 0).put("items", org.json.JSONArray()))
+                .put("_err", why)
         }
-        return false
-    }
-
-    /** 사이트 주소 (https://codiya.kr) */
-    fun siteUrl(c: Context): String = api(c).substringBefore("/cdapi/").ifEmpty { "https://codiya.kr" }
-
-    private fun api(c: Context): String = prefs(c).getString("api", "https://codiya.kr/cdapi/app/index.php") ?: "https://codiya.kr/cdapi/app/index.php"
-
-    /** 메모 불러오기 (실패하면 저장해둔 것) — 백그라운드에서 */
-    fun memoGet(c: Context, key: String, mask: String, call: Boolean): JSONObject? {
-        val token = prefs(c).getString("token", null) ?: return memoCached(c, key)
-        return try {
-            val url = URL(api(c) + "/v1/memo?token=" + URLEncoder.encode(token, "UTF-8") + "&hash=" + key +
-                "&mask=" + URLEncoder.encode(mask, "UTF-8") + "&call=" + (if (call) 1 else 0) +
-                "&phone=" + URLEncoder.encode(numOf(c, key), "UTF-8"))
-            val con = (url.openConnection() as HttpURLConnection).apply { connectTimeout = 3500; readTimeout = 4500 }
-            val body = (if (con.responseCode in 200..299) con.inputStream else con.errorStream)?.bufferedReader()?.readText() ?: ""
-            con.disconnect()
-            val j = JSONObject(body)
-            if (j.optBoolean("ok") && !j.optBoolean("off")) prefs(c).edit().putString("memo_$key", body).apply()
-            j
-        } catch (_: Exception) {
-            memoCached(c, key)
+        val token = prefs(c).getString("token", null) ?: return fail("앱 로그인 정보 없음 (앱을 한 번 열어주세요)")
+        var lastWhy = ""
+        for (attempt in 1..2) { // 한 번 더 시도
+            try {
+                val url = URL(api(c) + "/v1/memo?token=" + URLEncoder.encode(token, "UTF-8") + "&hash=" + key +
+                    "&mask=" + URLEncoder.encode(mask, "UTF-8") + "&call=" + (if (call && attempt == 1) 1 else 0) +
+                    // 🖥 PC 메모창: 울릴 때 번호를 같이 보내서 PC에 띄움 (서버엔 1시간만 두고 지움)
+                    (if (call && attempt == 1 && num.isNotEmpty()) "&num=" + URLEncoder.encode(num, "UTF-8") else ""))
+                val con = (url.openConnection() as HttpURLConnection).apply { connectTimeout = 6000; readTimeout = 9000 }
+                val code = con.responseCode
+                val body = (if (code in 200..299) con.inputStream else con.errorStream)?.bufferedReader()?.readText() ?: ""
+                con.disconnect()
+                val j = runCatching { JSONObject(body) }.getOrNull()
+                if (j == null) { lastWhy = "서버 응답 $code"; continue }
+                if (j.optBoolean("off")) return j
+                if (!j.optBoolean("ok")) { lastWhy = "서버 $code " + j.optString("error"); if (code in 400..499) break else continue }
+                prefs(c).edit().putString("memo_$key", body).apply()
+                Card.sync(c, key, j) // 📇 명함이 있으면 받아두기
+                return j
+            } catch (e: Exception) {
+                lastWhy = "인터넷 연결 (" + (e.javaClass.simpleName) + ")"
+            }
         }
+        return fail(lastWhy)
     }
 
     fun memoCached(c: Context, key: String): JSONObject? =
         prefs(c).getString("memo_$key", null)?.let { runCatching { JSONObject(it) }.getOrNull() }
 
     /** 메모 저장 (name 이 null 이면 이름은 그대로) → 새 메모 묶음 또는 null — 백그라운드에서 */
-    /** 마지막 저장 실패 이유 (화면 안내용) */
-    @Volatile var lastErr: String = ""
-
-    fun memoAdd(c: Context, key: String, mask: String, name: String?, body: String, kind: String, queueOnFail: Boolean = true): JSONObject? {
-        val token = prefs(c).getString("token", null)
-        if (token == null) { lastErr = "코디야 앱에 로그인이 안 되어 있어요"; return null }
-        val phone = numOf(c, key)
-        val j = memoAddOnce(c, token, key, mask, name, body, kind, phone)
-        if (j == null && queueOnFail && (body.isNotEmpty() || name != null)) queueMemo(c, key, mask, name, body, kind, phone)
-        if (j != null) Thread { flushMemoQueue(c) }.start()
-        return j
-    }
-
-    private fun memoAddOnce(c: Context, token: String, key: String, mask: String, name: String?, body: String, kind: String, phone: String): JSONObject? {
+    fun memoAdd(c: Context, key: String, mask: String, name: String?, body: String, kind: String): JSONObject? {
+        val token = prefs(c).getString("token", null) ?: return null
         return try {
             val con = (URL(api(c) + "/v1/memo/add").openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"; doOutput = true; connectTimeout = 5000; readTimeout = 25000
                 setRequestProperty("Content-Type", "application/json")
             }
-            val o = JSONObject().put("token", token).put("hash", key).put("mask", mask).put("body", body).put("kind", kind).put("phone", phone)
+            val o = JSONObject().put("token", token).put("hash", key).put("mask", mask).put("body", body).put("kind", kind)
             if (name != null) o.put("name", name)
             con.outputStream.use { it.write(o.toString().toByteArray()) }
             val res = (if (con.responseCode in 200..299) con.inputStream else con.errorStream)?.bufferedReader()?.readText() ?: ""
             con.disconnect()
             val j = JSONObject(res)
-            if (j.optBoolean("ok")) { lastErr = ""; prefs(c).edit().putString("memo_$key", res).apply(); j }
-            else { lastErr = j.optString("msg", "서버가 저장을 거절했어요"); null }
-        } catch (e: Exception) {
-            lastErr = "인터넷 연결이 약해요 (연결되면 자동으로 다시 저장해요)"
+            if (j.optBoolean("ok")) { prefs(c).edit().putString("memo_$key", res).apply(); j } else null
+        } catch (_: Exception) {
             null
         }
     }
 
-    /** 저장 못 한 메모는 휴대폰에 잠시 두었다가 다음에 자동으로 다시 저장 */
-    @Synchronized
-    private fun queueMemo(c: Context, key: String, mask: String, name: String?, body: String, kind: String, phone: String) {
-        val p = prefs(c)
-        val arr = runCatching { org.json.JSONArray(p.getString("memo_q", "[]")) }.getOrDefault(org.json.JSONArray())
-        if (arr.length() >= 50) return
-        arr.put(JSONObject().put("key", key).put("mask", mask).put("name", name ?: JSONObject.NULL).put("body", body).put("kind", kind).put("phone", phone))
-        p.edit().putString("memo_q", arr.toString()).apply()
-    }
-
-    @Synchronized
-    fun flushMemoQueue(c: Context) {
-        val p = prefs(c)
-        val token = p.getString("token", null) ?: return
-        val arr = runCatching { org.json.JSONArray(p.getString("memo_q", "[]")) }.getOrDefault(org.json.JSONArray())
-        if (arr.length() == 0) return
-        val left = org.json.JSONArray()
-        for (i in 0 until arr.length()) {
-            val o = arr.optJSONObject(i) ?: continue
-            val nm = if (o.isNull("name")) null else o.optString("name")
-            val ok = memoAddOnce(c, token, o.optString("key"), o.optString("mask"), nm, o.optString("body"), o.optString("kind"), o.optString("phone")) != null
-            if (!ok) left.put(o)
+    /** 지난 메모 고치기(edit) · 지우기(del) → 바뀐 메모 목록 */
+    fun memoChange(c: Context, key: String, id: Int, body: String?): JSONObject? {
+        val token = prefs(c).getString("token", null) ?: return null
+        return try {
+            val con = (URL(api(c) + (if (body == null) "/v1/memo/del" else "/v1/memo/edit")).openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"; doOutput = true; connectTimeout = 5000; readTimeout = 12000
+                setRequestProperty("Content-Type", "application/json")
+            }
+            val o = JSONObject().put("token", token).put("hash", key).put("id", id)
+            if (body != null) o.put("body", body)
+            con.outputStream.use { it.write(o.toString().toByteArray()) }
+            val res = (if (con.responseCode in 200..299) con.inputStream else con.errorStream)?.bufferedReader()?.readText() ?: ""
+            con.disconnect()
+            val j = JSONObject(res)
+            if (j.optBoolean("ok") && j.has("items")) { prefs(c).edit().putString("memo_$key", res).apply(); j } else null
+        } catch (_: Exception) {
+            null
         }
-        p.edit().putString("memo_q", left.toString()).apply()
     }
 
     /** 최근 걸려온 번호 (에이닷 요약 공유할 때 고르기용, 휴대폰 안에만 저장) */
@@ -286,8 +210,7 @@ object CallbackStore {
         val out = org.json.JSONArray()
         for (i in 0 until arr.length()) {
             val o = arr.optJSONObject(i) ?: continue
-            if (o.optString("n").takeLast(8) == num.takeLast(8) && now - o.optLong("t") < 3 * 60 * 1000L) return // 같은 전화가 두 경로(번호 확인·전화 상태)로 와도 한 번만
-            if (now - o.optLong("t") < 3 * 60 * 60 * 1000L) out.put(o)
+            if (o.optString("n") != num && now - o.optLong("t") < 3 * 60 * 60 * 1000L) out.put(o)
         }
         out.put(JSONObject().put("n", num).put("t", now))
         p.edit().putString("call_nums", out.toString()).apply()
@@ -314,9 +237,8 @@ object CallbackStore {
     /** 서버에서 새로 받기 (실패하면 저장된 것) — 반드시 백그라운드에서 호출 */
     fun fetchConfig(c: Context, timeoutMs: Int = 3500): JSONObject? {
         val p = prefs(c)
-        if (p.getString("memo_q", "[]") != "[]") Thread { runCatching { flushMemoQueue(c) } }.start()
         val token = p.getString("token", null) ?: return cachedConfig(c)
-        val api = p.getString("api", "https://codiya.kr/cdapi/app/index.php")!!
+        val api = p.getString("api", "https://api.codiya.kr")!!
         return try {
             val url = URL("$api/v1/callback/config?token=" + URLEncoder.encode(token, "UTF-8"))
             val con = (url.openConnection() as HttpURLConnection).apply {
@@ -389,7 +311,7 @@ object CallbackStore {
     fun queueLog(c: Context, tplId: Int, digits: String, kind: String, result: String) {
         val p = prefs(c)
         val arr = runCatching { JSONArray(p.getString("logq", "[]")) }.getOrDefault(JSONArray())
-        arr.put(JSONObject().put("tpl_id", tplId).put("mask", mask(digits)).put("hash", hash(digits)).put("kind", kind).put("result", result).put("phone", digits))
+        arr.put(JSONObject().put("tpl_id", tplId).put("mask", mask(digits)).put("hash", hash(digits)).put("kind", kind).put("result", result))
         p.edit().putString("logq", arr.toString()).apply()
     }
 
@@ -398,7 +320,7 @@ object CallbackStore {
     fun flushLogs(c: Context) {
         val p = prefs(c)
         val token = p.getString("token", null) ?: return
-        val api = p.getString("api", "https://codiya.kr/cdapi/app/index.php")!!
+        val api = p.getString("api", "https://api.codiya.kr")!!
         val arr = runCatching { JSONArray(p.getString("logq", "[]")) }.getOrDefault(JSONArray())
         if (arr.length() == 0) return
         try {

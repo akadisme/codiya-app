@@ -13,12 +13,12 @@ import androidx.annotation.RequiresApi
 class CallScreen : CallScreeningService() {
     override fun onScreenCall(details: Call.Details) {
         try {
-            CallbackStore.installCrashLog(this)
             val incoming = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
                 details.callDirection == Call.Details.DIRECTION_INCOMING
             val num = CallbackStore.digits(details.handle?.schemeSpecificPart)
             if (incoming && num.length >= 9) {
                 CallbackStore.addCallNum(this, num) // 통화 중 대기 전화도 차례로 쌓음
+                MemoPopup.onRinging(this, num)      // 📒 받기 전에 메모창
             }
         } catch (_: Exception) {
         }

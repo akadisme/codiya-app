@@ -38,55 +38,19 @@ object CallbackPopup {
     private const val INK = 0xFF0F181D.toInt()
     private const val MUTE = 0xFF5B6870.toInt()
     private var current: View? = null
-    /** 콜백 확인 창이 떠 있는지 (메모창이 그 위로 올라가지 않게) */
-    fun isShowing(): Boolean = current != null
     // 아직 못 띄운 창 (통화 중 대기 전화): first = 창으로 띄우기, second = 알림줄로 보내기
     private val waiting = ArrayDeque<Pair<() -> Unit, () -> Unit>>()
 
-    /** '다른 앱 위에 표시' 허용 여부: 일부 휴대폰은 켜 놓아도 canDrawOverlays 가 늦게 바뀌어서 시스템 기록(AppOps)도 같이 봄 */
+    /** '다른 앱 위에 표시' 허용 여부: 일부 휴대폰(안드로이드 16 등)은 켜 놓아도 false 라서 시스템 기록(AppOps)도 같이 봄 */
     fun canShow(c: Context): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true
         if (Settings.canDrawOverlays(c)) return true
-        if (probe(c)) return true // 휴대폰이 꺼짐으로 알려줘도 실제로 띄워지면 켜진 것
         return try {
             val ops = c.getSystemService(Context.APP_OPS_SERVICE) as android.app.AppOpsManager
             val mode = if (Build.VERSION.SDK_INT >= 29) ops.unsafeCheckOpNoThrow("android:system_alert_window", android.os.Process.myUid(), c.packageName)
                        else @Suppress("DEPRECATION") ops.checkOpNoThrow("android:system_alert_window", android.os.Process.myUid(), c.packageName)
             mode == android.app.AppOpsManager.MODE_ALLOWED
         } catch (_: Exception) { false }
-    }
-
-    /** 눈에 안 보이는 1점짜리 창을 실제로 띄워 보고 바로 지움 → 진짜 켜져 있는지 확인 (1분 동안 결과 기억) */
-    @Volatile private var probeAt = 0L
-    @Volatile private var probeOk = false
-    fun probe(c: Context): Boolean {
-        val now = System.currentTimeMillis()
-        if (now - probeAt < 60_000L) return probeOk
-        val app = c.applicationContext
-        val run = {
-            var ok = false
-            try {
-                val wm = app.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-                val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-                           else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
-                val v = View(app)
-                val lp = WindowManager.LayoutParams(1, 1, type,
-                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
-                    PixelFormat.TRANSPARENT)
-                wm.addView(v, lp); ok = true
-                runCatching { wm.removeViewImmediate(v) }
-            } catch (_: Throwable) {}
-            ok
-        }
-        val ok: Boolean = if (Looper.myLooper() == Looper.getMainLooper()) run() else {
-            var r = false
-            val latch = CountDownLatch(1)
-            Handler(Looper.getMainLooper()).post { r = run(); latch.countDown() }
-            latch.await(1500, TimeUnit.MILLISECONDS)
-            r
-        }
-        probeAt = now; probeOk = ok
-        return ok
     }
 
     /** 백그라운드에서 호출 → 화면에 띄우고 성공 여부 반환 */
@@ -132,16 +96,8 @@ object CallbackPopup {
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN, PixelFormat.TRANSLUCENT
         )
         wm.addView(root, params)
-        PermWatch.markOverlayOk(c)
         current = root
         root.requestFocus()
-        // 에이닷·T전화처럼 통화 후 자기 화면을 띄우는 전화앱보다 앞에 오게 몇 번 다시 올림
-        val h = Handler(Looper.getMainLooper())
-        for (ms in longArrayOf(600L, 1500L, 2800L, 4500L)) h.postDelayed({
-            // 다른 창(에이닷 통화 후 화면 등)에 가려져 포커스를 잃었을 때만 다시 올림 → 안 가려졌으면 깜빡이지 않음
-            if (current === root && root.isAttachedToWindow && !root.hasWindowFocus())
-                runCatching { wm.removeViewImmediate(root); wm.addView(root, params); root.requestFocus() }
-        }, ms)
     }
 
     /** "콜백문자를 보내시겠습니까?" 창 화면 (화면 위 창 · 알림을 눌렀을 때 화면 둘 다 사용) */
@@ -173,7 +129,7 @@ object CallbackPopup {
 
         card.addView(text("📨 콜백문자", 13f, GOLD, true))
         card.addView(text("콜백문자를 보내시겠습니까?", 19f, INK, true), lp(4f))
-        val masked = CallbackStore.pretty(num)
+        val masked = CallbackStore.mask(num)
         card.addView(text(if (missed) "📵 부재중 전화 · $masked" else "📞 통화 종료 · $masked", 14.5f, MUTE), lp(4f))
         if (hint) {
             card.addView(text("🎯 ${list[0].optString("title")} 홈페이지에서 온 전화예요", 13.5f, 0xFF1D7D5C.toInt(), true).apply {
@@ -198,7 +154,7 @@ object CallbackPopup {
             mmsTag.visibility = if (list[selected].optBoolean("mms")) View.VISIBLE else View.GONE
         }
         if (list.size > 1) {
-            card.addView(text("어떤 문자를 보낼까요?", 13.5f, MUTE, true), lp(14f))
+            card.addView(text("어느 현장 문의였나요?", 13.5f, MUTE, true), lp(14f))
             val row = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL }
             list.forEachIndexed { i, t ->
                 val chip = text(t.optString("title"), 14f, INK, true).apply {

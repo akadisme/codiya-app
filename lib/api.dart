@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 
 import 'config.dart';
 
-/// 푸시 센터(codiya.kr/cdapi/app) 호출
+/// 푸시 센터(api.codiya.kr) 호출
 class Api {
   static const _timeout = Duration(seconds: 15);
 

@@ -45,7 +45,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               SwitchListTile(
                 title: const Text('알림 받기'),
-                subtitle: const Text('고객센터 답변, 약속 알림, 코디야 소식'),
+                subtitle: const Text('코디야 소식·알림'),
                 value: _push.pushOn,
                 onChanged: (v) => _update(push: v),
               ),
@@ -54,12 +54,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ListTile(
                   leading: const Text('📨', style: TextStyle(fontSize: 22)),
                   title: const Text('콜백문자'),
-                  subtitle: const Text('통화가 끝나면 콜백문자 보내기'),
+                  subtitle: const Text('통화가 끝나면 현장 안내 문자 보내기'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => Navigator.of(context).push(MaterialPageRoute(
                       builder: (_) => CallbackScreen(onOpenLink: widget.onOpenLink!))),
                 ),
               if (Theme.of(context).platform == TargetPlatform.android && widget.onOpenLink != null) const Divider(),
+              if (Theme.of(context).platform == TargetPlatform.android && widget.onOpenLink != null)
+                ListTile(
+                  leading: const Text('📇', style: TextStyle(fontSize: 22)),
+                  title: const Text('명함 등록'),
+                  subtitle: const Text('명함을 찍거나 사진을 고르면 AI가 이름·번호를 읽어 등록 → 그 고객 전화 때 명함이 떠요'),
+                  trailing: const Icon(Icons.photo_camera_outlined),
+                  onTap: () => CallbackBridge.call('cardRegister'),
+                ),
+              if (Theme.of(context).platform == TargetPlatform.android && widget.onOpenLink != null)
+                ListTile(
+                  leading: const Text('📋', style: TextStyle(fontSize: 22)),
+                  title: const Text('명함·고객 목록'),
+                  subtitle: const Text('등록한 명함 보기 · 잘못 읽은 번호·이름 고치기'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => widget.onOpenLink!('$siteUrl/appapi/callback.php?cards=1#memo'),
+                ),
+              if (Theme.of(context).platform == TargetPlatform.android && widget.onOpenLink != null) const Divider(),
+              ListTile(
+                title: const Text('내 회원 유형'),
+                subtitle: const Text('홈페이지 회원정보 수정에서 바꿀 수 있어요'),
+                trailing: Text(memberTypes[_push.memberType] ?? '로그인 후 표시',
+                    style: theme.textTheme.titleSmall),
+              ),
+              const Divider(),
               ListTile(
                 title: const Text('기기 번호'),
                 subtitle: const Text('관리자 화면의 "설치된 기기"에 이 번호로 보여요'),

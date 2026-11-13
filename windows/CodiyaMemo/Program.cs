@@ -1,4 +1,4 @@
-// 코디야 전화 메모 (PC 프로그램)
+// 코디야 전화팝업 (PC 프로그램)
 // 휴대폰에 전화가 울리면 → 코디야 서버 → 이 프로그램이 2.5초마다 확인 → 화면 맨 앞에 고객 메모 창
 using System;
 using System.Collections.Generic;
@@ -21,8 +21,8 @@ namespace CodiyaMemo
     static class Program
     {
         public const string Site = "https://codiya.kr/appapi/memo_pc.php";
-        public const string AppName = "코디야 전화 메모";
-        public const string Version = "1.1.3";
+        public const string AppName = "코디야 전화팝업";
+        public const string Version = "1.1.4";
         public const string CfgUrl = "https://codiya.kr/appapi/pc_ad.php"; // 서버에서 정하는 설정 (홈페이지 주소 · 광고)
         public const string VerUrl = "https://api.codiya.kr/pc/version.json"; // 자동 업데이트: 최신 버전 · 설치 파일 주소
         public static EventWaitHandle OpenSignal; // 바탕화면 아이콘을 또 누르면 켜져 있는 프로그램에 알림
@@ -353,7 +353,7 @@ namespace CodiyaMemo
             {
                 var body = await http.GetStringAsync(Url("a=ring&after=" + last));
                 if (body.Contains("\"login\":true")) { SetStatus("연결이 끊겼어요 · 다시 로그인해주세요"); Settings.Set("tok", ""); timer.Stop(); ShowLink(); return; }
-                if (body.Contains("\"off\":true")) { SetStatus("⚠️ 이용권이 없거나 전화 메모가 꺼져 있어요"); return; }
+                if (body.Contains("\"off\":true")) { SetStatus("⚠️ 이용권이 없거나 전화팝업이 꺼져 있어요"); return; }
                 if (!body.Contains("\"ok\":true")) { SetStatus("서버 확인 중…"); return; }
                 fails = 0;
                 SetStatus("🟢 연결됨 · 전화 오면 메모 창이 떠요");

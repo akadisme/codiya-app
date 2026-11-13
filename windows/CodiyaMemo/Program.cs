@@ -22,7 +22,7 @@ namespace CodiyaMemo
     {
         public const string Site = "https://codiya.kr/appapi/memo_pc.php";
         public const string AppName = "코디야 전화 메모";
-        public const string Version = "1.1.0";
+        public const string Version = "1.1.1";
         public const string CfgUrl = "https://codiya.kr/appapi/pc_ad.php"; // 서버에서 정하는 설정 (홈페이지 주소 · 광고)
         public const string VerUrl = "https://api.codiya.kr/pc/version.json"; // 자동 업데이트: 최신 버전 · 설치 파일 주소
         public static EventWaitHandle OpenSignal; // 바탕화면 아이콘을 또 누르면 켜져 있는 프로그램에 알림
@@ -64,6 +64,36 @@ namespace CodiyaMemo
             if (_env == null) _env = await CoreWebView2Environment.CreateAsync(null, Path.Combine(DataDir, "web"));
             return _env;
         }
+
+        /// <summary>브라우저로 열기: browser="chrome" 이면 크롬이 있을 때 크롬으로, 없으면 윈도우 기본 브라우저</summary>
+        public static void OpenBrowser(string url, string browser)
+        {
+            if (!(url.StartsWith("http://") || url.StartsWith("https://"))) return;
+            if (browser != "default")
+            {
+                var chrome = FindChrome();
+                if (chrome != null) { try { Process.Start(chrome, "\"" + url + "\""); return; } catch { } }
+            }
+            try { Process.Start(url); } catch { }
+        }
+
+        static string FindChrome()
+        {
+            const string ap = @"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe";
+            foreach (var root in new[] { Registry.CurrentUser, Registry.LocalMachine })
+            {
+                try { using (var k = root.OpenSubKey(ap)) { var v = k?.GetValue(null) as string; if (!string.IsNullOrEmpty(v) && File.Exists(v.Trim('"'))) return v.Trim('"'); } } catch { }
+            }
+            foreach (var d in new[] { Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData) })
+            {
+                if (string.IsNullOrEmpty(d)) continue;
+                var f = Path.Combine(d, @"Google\Chrome\Application\chrome.exe");
+                if (File.Exists(f)) return f;
+            }
+            return null;
+        }
+
+        public static string Browser = "chrome"; // 서버 설정으로 바뀜
 
         public static Icon AppIcon()
         {
@@ -190,6 +220,7 @@ namespace CodiyaMemo
             timer.Tick += async (s, e) => await Poll();
 
             homeUrl = Settings.Get("home", homeUrl);
+            Program.Browser = Settings.Get("browser", "chrome");
             if (Settings.Get("tok") == "") ShowLink();
             else
             {
@@ -213,10 +244,25 @@ namespace CodiyaMemo
             updTimer.Start();
         }
 
-        void OpenHome()
+        bool opening;
+        /// <summary>바탕화면 아이콘: 서버가 정한 주소를 (로그인된 채로 열리게 한 번 쓰는 입장권과 함께) 브라우저로 열기</summary>
+        async void OpenHome()
         {
             if (Settings.Get("tok") == "") { ShowLink(); return; }
-            try { Process.Start(homeUrl); } catch { }
+            if (opening) return;
+            opening = true;
+            var url = homeUrl;
+            try
+            {
+                var body = await http.GetStringAsync(Program.CfgUrl + "?a=open&v=" + Program.Version + "&pctok=" + Uri.EscapeDataString(Settings.Get("tok")));
+                var u = JStr(body, "url");
+                if (u.StartsWith("http://") || u.StartsWith("https://")) url = u;
+                var b = JStr(body, "browser");
+                if (b != "") Program.Browser = b;
+            }
+            catch { }
+            finally { opening = false; }
+            Program.OpenBrowser(url, Program.Browser);
         }
 
         static string JStr(string body, string key)
@@ -241,6 +287,8 @@ namespace CodiyaMemo
                 if (!body.Contains("\"ok\":true")) return;
                 var home = JStr(body, "home");
                 if (home.StartsWith("http://") || home.StartsWith("https://")) { homeUrl = home; if (Settings.Get("home") != home) Settings.Set("home", home); }
+                var br = JStr(body, "browser");
+                if (br != "") { Program.Browser = br; if (Settings.Get("browser") != br) Settings.Set("browser", br); }
                 var ad = JStr(body, "ad_url");
                 if (ad.StartsWith("https://codiya.kr/") && CanShowAd())
                 {
@@ -585,7 +633,7 @@ namespace CodiyaMemo
                 web.CoreWebView2.NewWindowRequested += (s, e) =>
                 {
                     e.Handled = true;
-                    if (e.Uri.StartsWith("http://") || e.Uri.StartsWith("https://")) try { Process.Start(e.Uri); } catch { }
+                    Program.OpenBrowser(e.Uri, Program.Browser);
                     BeginInvoke((Action)Close);
                 };
                 web.CoreWebView2.WebMessageReceived += (s, e) => { try { if (e.TryGetWebMessageAsString() == "close") BeginInvoke((Action)Close); } catch { } };

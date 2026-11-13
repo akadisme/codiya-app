@@ -17,7 +17,7 @@ UninstallDisplayIcon={app}\CodiyaMemo.exe
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
-CloseApplications=force
+CloseApplications=no
 LicenseFile=license.txt
 DisableReadyPage=yes
 
@@ -42,3 +42,13 @@ Filename: "{app}\CodiyaMemo.exe"; Parameters: "/tray"; Flags: nowait skipifnotsi
 
 [UninstallRun]
 Filename: "{cmd}"; Parameters: "/C taskkill /IM CodiyaMemo.exe /F"; Flags: runhidden; RunOnceId: "KillApp"
+
+[Code]
+// 설치 전에 켜져 있는 프로그램을 조용히 끄기 (「응용 프로그램 자동 닫기」 화면 없이) — 설치가 끝나면 다시 켜져요
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var R: Integer;
+begin
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM CodiyaMemo.exe', '', SW_HIDE, ewWaitUntilTerminated, R);
+  Sleep(800);
+  Result := '';
+end;

@@ -32,11 +32,17 @@ object CallbackStore {
         return if (rest.startsWith("82") && rest.length >= 11) "0" + rest.substring(2) else rest
     }
 
+    /** 코디야: 번호를 가리지 않고 보기 좋게 (010-1234-5678 / 투넘버 *281-010-1234-5678) */
     fun mask(d: String): String {
         val m = Regex("^([*#]\\d{3})(\\d{7,})$").find(d)
         if (m != null) return m.groupValues[1] + "-" + mask(m.groupValues[2])
         val n = d.filter { it.isDigit() }
-        return if (n.length < 7) "***" else n.substring(0, 3) + "-****-" + n.takeLast(4)
+        if (n.length < 7) return "***"
+        Regex("^(01[0-9])([0-9]{3,4})([0-9]{4})$").find(n)?.let { return it.groupValues[1] + "-" + it.groupValues[2] + "-" + it.groupValues[3] }
+        Regex("^(02)([0-9]{3,4})([0-9]{4})$").find(n)?.let { return it.groupValues[1] + "-" + it.groupValues[2] + "-" + it.groupValues[3] }
+        Regex("^(0[3-9][0-9])([0-9]{3,4})([0-9]{4})$").find(n)?.let { return it.groupValues[1] + "-" + it.groupValues[2] + "-" + it.groupValues[3] }
+        Regex("^(1[5-9][0-9]{2})([0-9]{4})$").find(n)?.let { return it.groupValues[1] + "-" + it.groupValues[2] }
+        return n
     }
 
     fun hash(d: String): String {

@@ -19,19 +19,18 @@ SolidCompression=yes
 WizardStyle=modern
 CloseApplications=force
 LicenseFile=license.txt
+DisableReadyPage=yes
 
 [Languages]
 Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"
-
-[Tasks]
-Name: "desktopicon2"; Description: "바탕화면에 아이콘 만들기 (누르면 코디야 홈페이지가 열려요)"
 
 [Files]
 Source: "publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{userprograms}\코디야 전화 메모"; Filename: "{app}\CodiyaMemo.exe"
-Name: "{userdesktop}\코디야 전화 메모"; Filename: "{app}\CodiyaMemo.exe"; Tasks: desktopicon2
+; 바탕화면 아이콘: 직접 설치할 때 항상 만들기 (자동 업데이트 때는 다시 만들지 않음 · 사용자가 지운 아이콘을 되살리지 않게)
+Name: "{userdesktop}\코디야 전화 메모"; Filename: "{app}\CodiyaMemo.exe"; Check: not WizardSilent
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "CodiyaMemo"; ValueData: """{app}\CodiyaMemo.exe"" /tray"; Flags: uninsdeletevalue

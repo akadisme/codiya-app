@@ -1,5 +1,5 @@
 ﻿; 코디야 전화 메모 — 설치 파일 (관리자 권한 없이 내 계정에만 설치)
-#define AppVer "1.1.2"
+#define AppVer "1.1.3"
 [Setup]
 AppId={{C0D1A7A0-3F2E-4B9C-8D61-7E5A2C9B4F10}
 AppName=코디야 전화 메모

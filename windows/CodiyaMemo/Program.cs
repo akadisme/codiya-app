@@ -22,7 +22,7 @@ namespace CodiyaMemo
     {
         public const string Site = "https://codiya.kr/appapi/memo_pc.php";
         public const string AppName = "코디야 전화 메모";
-        public const string Version = "1.1.2";
+        public const string Version = "1.1.3";
         public const string CfgUrl = "https://codiya.kr/appapi/pc_ad.php"; // 서버에서 정하는 설정 (홈페이지 주소 · 광고)
         public const string VerUrl = "https://api.codiya.kr/pc/version.json"; // 자동 업데이트: 최신 버전 · 설치 파일 주소
         public static EventWaitHandle OpenSignal; // 바탕화면 아이콘을 또 누르면 켜져 있는 프로그램에 알림
@@ -292,7 +292,7 @@ namespace CodiyaMemo
                 var ad = JStr(body, "ad_url");
                 if (ad.StartsWith("https://codiya.kr/") && CanShowAd())
                 {
-                    if (adWin != null && !adWin.IsDisposed) adWin.Close();
+                    if (adWin != null && !adWin.IsDisposed) adWin.Bye();
                     adWin = new AdForm(ad, JInt(body, "ad_w", 320), JInt(body, "ad_h", 470), JInt(body, "ad_sec", 12));
                     adWin.Show();
                 }
@@ -481,7 +481,7 @@ namespace CodiyaMemo
         {
             tray.Visible = false;
             timer.Stop();
-            try { cfgTimer?.Stop(); updTimer?.Stop(); if (adWin != null && !adWin.IsDisposed) adWin.Close(); } catch { }
+            try { cfgTimer?.Stop(); updTimer?.Stop(); if (adWin != null && !adWin.IsDisposed) adWin.Bye(); } catch { }
             cid.Dispose();
             ExitThread();
         }
@@ -586,13 +586,19 @@ namespace CodiyaMemo
         }
     }
 
-    /// <summary>화면 오른쪽 아래에 잠깐 올라오는 작은 광고 창 (내용은 서버 화면 · 포커스를 빼앗지 않음)</summary>
+    /// <summary>화면 오른쪽 아래에 올라오는 작은 광고 창 (내용은 서버 화면 · 포커스를 빼앗지 않음)
+    ///  · 정한 시간(초) 동안은 다른 곳을 눌러도 맨 앞에 그대로 · 그 안에는 ×/닫기/오늘 하루 안 보기/광고 클릭으로만 닫힘</summary>
     class AdForm : Form
     {
+        [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
+        static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
+        const uint SWP_NOSIZE = 0x1, SWP_NOMOVE = 0x2, SWP_NOACTIVATE = 0x10, SWP_SHOWWINDOW = 0x40;
+
         readonly WebView2 web = new WebView2 { Dock = DockStyle.Fill };
         readonly string url;
-        readonly System.Windows.Forms.Timer life = new System.Windows.Forms.Timer(), slide = new System.Windows.Forms.Timer { Interval = 15 };
-        int left, targetTop;
+        readonly System.Windows.Forms.Timer life = new System.Windows.Forms.Timer(), slide = new System.Windows.Forms.Timer { Interval = 15 }, keep = new System.Windows.Forms.Timer { Interval = 700 };
+        int targetTop;
+        bool canClose;
 
         public AdForm(string url, int w, int h, int sec)
         {
@@ -603,18 +609,38 @@ namespace CodiyaMemo
             StartPosition = FormStartPosition.Manual;
             Icon = Program.AppIcon();
             var wa = Screen.PrimaryScreen.WorkingArea;
-            Size = new Size(Math.Min(w, 600), Math.Min(h, 500));
+            Size = new Size(Math.Max(160, Math.Min(w, 600)), Math.Max(120, Math.Min(h, 760)));
             targetTop = wa.Bottom - Height - 12;
             Location = new Point(wa.Right - Width - 12, wa.Bottom); // 화면 아래에서 시작해서 스르륵 올라옴
             Controls.Add(web);
-            life.Interval = Math.Max(5, Math.Min(sec, 60)) * 1000;
+            life.Interval = Math.Max(5, Math.Min(sec, 300)) * 1000;
             life.Tick += (s, e) =>
             {
                 if (Bounds.Contains(Cursor.Position)) return; // 마우스를 올려 두면 안 닫힘
-                life.Stop(); Close();
+                life.Stop(); Bye();
             };
             slide.Tick += (s, e) => { if (Top > targetTop) Top = Math.Max(targetTop, Top - 18); else slide.Stop(); };
+            keep.Tick += (s, e) => Front(); // 다른 창을 눌러도 정한 시간 동안은 맨 앞에
             Load += async (s, e) => await Init();
+        }
+
+        void Front()
+        {
+            try
+            {
+                if (IsDisposed) return;
+                if (!Visible) Show();
+                if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
+                SetWindowPos(Handle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+            }
+            catch { }
+        }
+
+        /// <summary>닫기는 여기로만 (광고 창 버튼 · 시간 끝 · 프로그램 종료)</summary>
+        public void Bye()
+        {
+            canClose = true;
+            try { Close(); } catch { }
         }
 
         protected override bool ShowWithoutActivation => true; // 일하던 창의 입력을 빼앗지 않음
@@ -635,20 +661,29 @@ namespace CodiyaMemo
                 {
                     e.Handled = true;
                     Program.OpenBrowser(e.Uri, Program.Browser);
-                    BeginInvoke((Action)Close);
+                    BeginInvoke((Action)Bye);
                 };
-                web.CoreWebView2.WebMessageReceived += (s, e) => { try { if (e.TryGetWebMessageAsString() == "close") BeginInvoke((Action)Close); } catch { } };
-                web.CoreWebView2.NavigationCompleted += (s, e) => { if (!e.IsSuccess) BeginInvoke((Action)Close); };
+                web.CoreWebView2.WebMessageReceived += (s, e) => { try { if (e.TryGetWebMessageAsString() == "close") BeginInvoke((Action)Bye); } catch { } };
+                web.CoreWebView2.NavigationCompleted += (s, e) => { if (!e.IsSuccess) BeginInvoke((Action)Bye); };
                 web.CoreWebView2.Navigate(url);
                 slide.Start();
                 life.Start();
+                keep.Start();
             }
-            catch { Close(); }
+            catch { Bye(); }
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            // 정한 시간 안에 윈도우가 닫으려 하면 (다른 곳 클릭 · 바탕화면 보기 등) 닫지 않음
+            if (!canClose && e.CloseReason != CloseReason.WindowsShutDown && e.CloseReason != CloseReason.TaskManagerClosing && e.CloseReason != CloseReason.ApplicationExitCall)
+            { e.Cancel = true; Front(); return; }
+            base.OnFormClosing(e);
         }
 
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
-            life.Stop(); slide.Stop();
+            life.Stop(); slide.Stop(); keep.Stop();
             try { web.Dispose(); } catch { }
             base.OnFormClosed(e);
         }

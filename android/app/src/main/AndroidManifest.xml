@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- 콜백문자: 통화가 끝났는지만 확인 (통화 기록·문자 권한은 쓰지 않음) -->
@@ -12,6 +13,11 @@
     <!-- 🎙 통화녹음 AI 요약: 휴대폰 자동녹음 파일 읽기 -->
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <!-- 📤 PC 문자 발송: PC에서 보낸 문자를 이 휴대폰 문자로 보내기 (문자함 읽기 권한은 쓰지 않음) -->
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <application
         android:label="코디야"
@@ -71,6 +77,27 @@
             android:showWhenLocked="true"
             android:windowSoftInputMode="adjustResize"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!-- 📤 PC 문자 발송: 보내는 동안 알림줄에 진행 상황 -->
+        <service
+            android:name=".callback.PsmsService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+        <activity
+            android:name=".callback.PsmsActivity"
+            android:exported="false"
+            android:label="PC 문자 발송" />
+        <!-- 푸시: "PC 문자 보낼 차례" 조용한 신호 받기 (나머지 알림은 원래대로) -->
+        <service
+            android:name="io.flutter.plugins.firebase.messaging.FlutterFirebaseMessagingService"
+            tools:node="remove" />
+        <service
+            android:name=".callback.CodiyaFcmService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
 
         <!-- 📇 명함만 찍어서 등록 (AI가 번호 읽기) -->
         <activity

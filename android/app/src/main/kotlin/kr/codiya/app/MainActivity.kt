@@ -15,6 +15,11 @@ import kr.codiya.app.callback.CallbackNotifier
 import kr.codiya.app.callback.CallbackStore
 
 class MainActivity : FlutterActivity() {
+    override fun onResume() {
+        super.onResume()
+        kr.codiya.app.callback.PsmsService.kick(this) // 📤 PC에서 보낸 문자가 기다리고 있으면 보내기 (푸시를 놓쳤을 때)
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "codiya/callback").setMethodCallHandler { call, result ->
@@ -52,6 +57,9 @@ class MainActivity : FlutterActivity() {
                         requestPermissions(perms.toTypedArray(), 7703)
                     }
                     result.success(true)
+                }
+                "psmsOpen" -> { // 📤 PC 문자 발송 설정
+                    startActivity(Intent(this, kr.codiya.app.callback.PsmsActivity::class.java)); result.success(true)
                 }
                 "cardRegister" -> { // 📇 명함만 찍어서 등록
                     startActivity(Intent(this, kr.codiya.app.callback.CardActivity::class.java)); result.success(true)
@@ -123,6 +131,7 @@ class MainActivity : FlutterActivity() {
             "phone_state" to CallbackStore.phoneState(this),
             "diag" to (CallbackStore.prefs(this).getString("diag", "") ?: ""),
             "templates" to (cfg?.optJSONArray("templates")?.length() ?: 0),
+            "psms" to (kr.codiya.app.callback.PsmsService.on(this) && kr.codiya.app.callback.PsmsService.allowed(this)),
             "auto" to (cfg?.optBoolean("auto", false) ?: false),
         )
     }

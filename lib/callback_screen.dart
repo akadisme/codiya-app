@@ -220,7 +220,10 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
                       () async { await CallbackBridge.call('recOn', {'on': _s['rec'] != true}); await _refresh(); }),
                   _step(8, '🔋 배터리 "제한 없음"', '삼성 배터리 절약이 뒤에서 인터넷을 막으면 전화가 올 때 고객 메모를 못 불러와요. 앱 정보에서 [배터리] → "제한 없음", [모바일 데이터] → "백그라운드 데이터 사용 허용"을 켜주세요.',
                       _s['battery'] == true && _s['saver'] != true, '🔋 앱 정보 열기', mint, () => CallbackBridge.call('openBattery')),
-                  _step(9, '문자 템플릿 만들기', (_s['templates'] ?? 0) > 0
+                  _step(9, '📤 PC 문자 발송 (내 휴대폰으로 무료)', 'PC 코디야 [문자·단체·예약]에서 "내 휴대폰으로(무료)"를 골라 보내면, 이 휴대폰이 문자를 한 통씩 자동으로 보내요. 내 휴대폰 요금제의 문자로 나가서 문자 비용이 따로 들지 않아요. 예약 발송도 돼요.',
+                      _s['psms'] == true, _s['psms'] == true ? '📤 켜져 있어요 (설정 보기)' : '📤 PC 문자 발송 켜기', const Color(0xFF0AA394),
+                      () async { await CallbackBridge.call('psmsOpen'); }),
+                  _step(10, '문자 템플릿 만들기', (_s['templates'] ?? 0) > 0
                       ? '템플릿 ${_s['templates']}개가 알림 버튼으로 나와요. 현장이 여러 개면 홈페이지에서 템플릿을 늘릴 수 있어요.'
                       : (_s['linked'] == true
                           ? '홈페이지에서 현장 안내 문자(템플릿)를 1개 만들어주세요. 자동 알림까지 무료예요.'

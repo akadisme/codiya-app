@@ -22,6 +22,10 @@ namespace CodiyaMemo
     {
         public const string Site = "https://codiya.kr/appapi/memo_pc.php";
         public const string AppName = "코디야 전화 메모";
+        public const string Version = "1.1.0";
+        public const string CfgUrl = "https://codiya.kr/appapi/pc_ad.php"; // 서버에서 정하는 설정 (홈페이지 주소 · 광고)
+        public const string VerUrl = "https://api.codiya.kr/pc/version.json"; // 자동 업데이트: 최신 버전 · 설치 파일 주소
+        public static EventWaitHandle OpenSignal; // 바탕화면 아이콘을 또 누르면 켜져 있는 프로그램에 알림
 
         [STAThread]
         static void Main(string[] args)
@@ -29,7 +33,14 @@ namespace CodiyaMemo
             bool created;
             using (var mtx = new Mutex(true, "CodiyaMemo_single", out created))
             {
-                if (!created) return; // 이미 켜져 있음
+                if (!created)
+                {
+                    // 이미 켜져 있음 → 바탕화면 아이콘을 누른 거면 켜져 있는 프로그램에게 "홈페이지 열어줘"
+                    if (Array.IndexOf(args, "/tray") < 0)
+                        try { EventWaitHandle.OpenExisting("CodiyaMemo_open").Set(); } catch { }
+                    return;
+                }
+                OpenSignal = new EventWaitHandle(false, EventResetMode.AutoReset, "CodiyaMemo_open");
                 ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | (SecurityProtocolType)12288; // TLS 1.2 / 1.3
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
@@ -137,6 +148,10 @@ namespace CodiyaMemo
         readonly CidReader cid;
         string shownHash = "";
         DateTime shownAt = DateTime.MinValue;
+        string homeUrl = "https://codiya.kr";
+        readonly System.Windows.Forms.Timer cfgTimer, updTimer;
+        AdForm adWin;
+        bool cfgBusy, updBusy;
 
         public TrayApp(bool silent)
         {
@@ -144,12 +159,13 @@ namespace CodiyaMemo
             cid = new CidReader(ui) { OnNumber = n => _ = Landline(n) };
             var handler = new HttpClientHandler { CookieContainer = new CookieContainer(), UseCookies = true };
             http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(8) };
-            http.DefaultRequestHeaders.UserAgent.ParseAdd("CodiyaMemo/1.0");
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("CodiyaMemo/" + Program.Version);
 
             var menu = new ContextMenuStrip();
             miStatus = new ToolStripMenuItem("연결 확인 중…") { Enabled = false };
             menu.Items.Add(miStatus);
             menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add("🏠 코디야 홈페이지", null, (s, e) => OpenHome());
             menu.Items.Add("📒 메모창 열기", null, (s, e) => OpenMemo());
             miSound = new ToolStripMenuItem("🔊 전화 오면 소리", null, (s, e) => { Settings.Set("sound", miSound.Checked ? "0" : "1"); miSound.Checked = Settings.Get("sound", "1") == "1"; });
             miSound.Checked = Settings.Get("sound", "1") == "1";
@@ -173,13 +189,108 @@ namespace CodiyaMemo
             timer = new System.Windows.Forms.Timer { Interval = 2500 };
             timer.Tick += async (s, e) => await Poll();
 
+            homeUrl = Settings.Get("home", homeUrl);
             if (Settings.Get("tok") == "") ShowLink();
             else
             {
                 timer.Start();
                 _ = Poll();
-                if (!silent) tray.ShowBalloonTip(4000, Program.AppName, "켜져 있어요. 휴대폰에 전화가 오면 고객 메모 창이 화면 맨 앞에 떠요.", ToolTipIcon.Info);
+                if (!silent) OpenHome(); // 바탕화면 아이콘으로 켰으면 홈페이지 열기
             }
+
+            // 바탕화면 아이콘을 또 누르면 (이미 켜져 있을 때) → 홈페이지 열기
+            if (Program.OpenSignal != null)
+                new Thread(() => { while (true) { try { Program.OpenSignal.WaitOne(); ui.BeginInvoke((Action)OpenHome); } catch { return; } } }) { IsBackground = true }.Start();
+
+            // 서버 설정 (홈페이지 주소 · 광고): 시작 40초 뒤, 그다음 5분마다
+            cfgTimer = new System.Windows.Forms.Timer { Interval = 40 * 1000 };
+            cfgTimer.Tick += async (s, e) => { cfgTimer.Interval = 5 * 60 * 1000; await CheckCfg(); };
+            cfgTimer.Start();
+
+            // 자동 업데이트: 시작 2분 뒤, 그다음 6시간마다
+            updTimer = new System.Windows.Forms.Timer { Interval = 2 * 60 * 1000 };
+            updTimer.Tick += async (s, e) => { updTimer.Interval = 6 * 60 * 60 * 1000; await CheckUpdate(); };
+            updTimer.Start();
+        }
+
+        void OpenHome()
+        {
+            if (Settings.Get("tok") == "") { ShowLink(); return; }
+            try { Process.Start(homeUrl); } catch { }
+        }
+
+        static string JStr(string body, string key)
+        {
+            var m = Regex.Match(body, "\"" + key + "\":\"((?:[^\"\\\\]|\\\\.)*)\"");
+            return m.Success ? Regex.Unescape(m.Groups[1].Value) : "";
+        }
+        static int JInt(string body, string key, int def)
+        {
+            var m = Regex.Match(body, "\"" + key + "\":(\\d+)");
+            return m.Success ? int.Parse(m.Groups[1].Value) : def;
+        }
+
+        /// <summary>서버에서 정한 설정 받아오기 (홈페이지 주소 · 지금 띄울 광고)</summary>
+        async Task CheckCfg()
+        {
+            if (cfgBusy) return;
+            cfgBusy = true;
+            try
+            {
+                var body = await http.GetStringAsync(Program.CfgUrl + "?a=cfg&v=" + Program.Version + "&pctok=" + Uri.EscapeDataString(Settings.Get("tok")));
+                if (!body.Contains("\"ok\":true")) return;
+                var home = JStr(body, "home");
+                if (home.StartsWith("http://") || home.StartsWith("https://")) { homeUrl = home; if (Settings.Get("home") != home) Settings.Set("home", home); }
+                var ad = JStr(body, "ad_url");
+                if (ad.StartsWith("https://codiya.kr/") && CanShowAd())
+                {
+                    if (adWin != null && !adWin.IsDisposed) adWin.Close();
+                    adWin = new AdForm(ad, JInt(body, "ad_w", 360), JInt(body, "ad_h", 230), JInt(body, "ad_sec", 12));
+                    adWin.Show();
+                }
+            }
+            catch { }
+            finally { cfgBusy = false; }
+        }
+
+        /// <summary>광고를 띄워도 되는 때인지 (전화 메모 창이 떠 있거나 방금 전화가 왔으면 안 띄움)</summary>
+        bool CanShowAd()
+        {
+            if (Settings.Get("tok") == "") return false;
+            if ((DateTime.Now - shownAt).TotalMinutes < 3) return false;
+            if (popup != null && !popup.IsDisposed && popup.Visible && popup.WindowState != FormWindowState.Minimized) return false;
+            if (adWin != null && !adWin.IsDisposed && adWin.Visible) return false;
+            return true;
+        }
+
+        /// <summary>자동 업데이트: 서버에 더 새 버전이 있으면 받아서 조용히 설치 (설치가 끝나면 다시 켜져요)</summary>
+        async Task CheckUpdate()
+        {
+            if (updBusy) return;
+            updBusy = true;
+            try
+            {
+                var body = await http.GetStringAsync(Program.VerUrl + "?t=" + DateTime.Now.Ticks);
+                var ver = JStr(body, "version");
+                var url = JStr(body, "url");
+                if (!Version.TryParse(ver, out var nv) || nv <= Version.Parse(Program.Version)) return;
+                if (!(url.StartsWith("https://api.codiya.kr/") || url.StartsWith("https://codiya.kr/"))) return;
+                if ((DateTime.Now - shownAt).TotalMinutes < 5) return; // 전화 중일 수 있으면 다음에
+                if (Settings.Get("upd_try") == ver + "|" + DateTime.Now.ToString("yyyyMMdd")) return; // 오늘 이미 시도한 버전이면 내일 다시
+                Settings.Set("upd_try", ver + "|" + DateTime.Now.ToString("yyyyMMdd"));
+
+                var file = Path.Combine(Path.GetTempPath(), "CodiyaMemoSetup_" + ver + ".exe");
+                using (var dl = new HttpClient { Timeout = TimeSpan.FromMinutes(5) })
+                {
+                    var bytes = await dl.GetByteArrayAsync(url);
+                    if (bytes.Length < 300 * 1024 || bytes[0] != (byte)'M' || bytes[1] != (byte)'Z') return; // 설치 파일이 아니면 그만
+                    File.WriteAllBytes(file, bytes);
+                }
+                Process.Start(new ProcessStartInfo(file, "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-") { UseShellExecute = true });
+                Quit(); // 설치 프로그램이 새 버전을 깔고 다시 켜 줘요
+            }
+            catch { }
+            finally { updBusy = false; }
         }
 
         static bool SafeAuto() { try { return AutoStart.On; } catch { return false; } }
@@ -321,6 +432,7 @@ namespace CodiyaMemo
         {
             tray.Visible = false;
             timer.Stop();
+            try { cfgTimer?.Stop(); updTimer?.Stop(); if (adWin != null && !adWin.IsDisposed) adWin.Close(); } catch { }
             cid.Dispose();
             ExitThread();
         }
@@ -422,6 +534,74 @@ namespace CodiyaMemo
             Activate();
             var fi = new FLASHWINFO { cbSize = (uint)Marshal.SizeOf(typeof(FLASHWINFO)), hwnd = Handle, dwFlags = 3 | 12, uCount = 3, dwTimeout = 0 };
             FlashWindowEx(ref fi);
+        }
+    }
+
+    /// <summary>화면 오른쪽 아래에 잠깐 올라오는 작은 광고 창 (내용은 서버 화면 · 포커스를 빼앗지 않음)</summary>
+    class AdForm : Form
+    {
+        readonly WebView2 web = new WebView2 { Dock = DockStyle.Fill };
+        readonly string url;
+        readonly System.Windows.Forms.Timer life = new System.Windows.Forms.Timer(), slide = new System.Windows.Forms.Timer { Interval = 15 };
+        int left, targetTop;
+
+        public AdForm(string url, int w, int h, int sec)
+        {
+            this.url = url;
+            FormBorderStyle = FormBorderStyle.None;
+            ShowInTaskbar = false;
+            TopMost = true;
+            StartPosition = FormStartPosition.Manual;
+            Icon = Program.AppIcon();
+            var wa = Screen.PrimaryScreen.WorkingArea;
+            Size = new Size(Math.Min(w, 600), Math.Min(h, 500));
+            targetTop = wa.Bottom - Height - 12;
+            Location = new Point(wa.Right - Width - 12, wa.Bottom); // 화면 아래에서 시작해서 스르륵 올라옴
+            Controls.Add(web);
+            life.Interval = Math.Max(5, Math.Min(sec, 60)) * 1000;
+            life.Tick += (s, e) =>
+            {
+                if (Bounds.Contains(Cursor.Position)) return; // 마우스를 올려 두면 안 닫힘
+                life.Stop(); Close();
+            };
+            slide.Tick += (s, e) => { if (Top > targetTop) Top = Math.Max(targetTop, Top - 18); else slide.Stop(); };
+            Load += async (s, e) => await Init();
+        }
+
+        protected override bool ShowWithoutActivation => true; // 일하던 창의 입력을 빼앗지 않음
+        protected override CreateParams CreateParams
+        {
+            get { var cp = base.CreateParams; cp.ExStyle |= 0x08000000 | 0x00000080 | 0x00000008; return cp; } // NOACTIVATE · TOOLWINDOW · TOPMOST
+        }
+
+        async Task Init()
+        {
+            try
+            {
+                await web.EnsureCoreWebView2Async(await Program.Env());
+                web.CoreWebView2.Settings.AreDevToolsEnabled = false;
+                web.CoreWebView2.Settings.IsZoomControlEnabled = false;
+                web.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+                web.CoreWebView2.NewWindowRequested += (s, e) =>
+                {
+                    e.Handled = true;
+                    if (e.Uri.StartsWith("http://") || e.Uri.StartsWith("https://")) try { Process.Start(e.Uri); } catch { }
+                    BeginInvoke((Action)Close);
+                };
+                web.CoreWebView2.WebMessageReceived += (s, e) => { try { if (e.TryGetWebMessageAsString() == "close") BeginInvoke((Action)Close); } catch { } };
+                web.CoreWebView2.NavigationCompleted += (s, e) => { if (!e.IsSuccess) BeginInvoke((Action)Close); };
+                web.CoreWebView2.Navigate(url);
+                slide.Start();
+                life.Start();
+            }
+            catch { Close(); }
+        }
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            life.Stop(); slide.Stop();
+            try { web.Dispose(); } catch { }
+            base.OnFormClosed(e);
         }
     }
 }

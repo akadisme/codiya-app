@@ -22,7 +22,7 @@ namespace CodiyaMemo
     {
         public const string Site = "https://codiya.kr/appapi/memo_pc.php";
         public const string AppName = "코디야 전화 메모";
-        public const string Version = "1.1.1";
+        public const string Version = "1.1.2";
         public const string CfgUrl = "https://codiya.kr/appapi/pc_ad.php"; // 서버에서 정하는 설정 (홈페이지 주소 · 광고)
         public const string VerUrl = "https://api.codiya.kr/pc/version.json"; // 자동 업데이트: 최신 버전 · 설치 파일 주소
         public static EventWaitHandle OpenSignal; // 바탕화면 아이콘을 또 누르면 켜져 있는 프로그램에 알림
@@ -293,7 +293,7 @@ namespace CodiyaMemo
                 if (ad.StartsWith("https://codiya.kr/") && CanShowAd())
                 {
                     if (adWin != null && !adWin.IsDisposed) adWin.Close();
-                    adWin = new AdForm(ad, JInt(body, "ad_w", 360), JInt(body, "ad_h", 230), JInt(body, "ad_sec", 12));
+                    adWin = new AdForm(ad, JInt(body, "ad_w", 320), JInt(body, "ad_h", 470), JInt(body, "ad_sec", 12));
                     adWin.Show();
                 }
             }
@@ -357,6 +357,7 @@ namespace CodiyaMemo
                 if (!body.Contains("\"ok\":true")) { SetStatus("서버 확인 중…"); return; }
                 fails = 0;
                 SetStatus("🟢 연결됨 · 전화 오면 메모 창이 떠요");
+                if (body.Contains("\"pcad\":1")) _ = CheckCfg(); // 관리자가 [시험 보내기] → 바로 광고 확인
                 bool first = last == 0;
                 var m = Regex.Match(body, "\"last\":(\\d+)");
                 if (m.Success) last = Math.Max(last, long.Parse(m.Groups[1].Value));
@@ -447,7 +448,7 @@ namespace CodiyaMemo
             SetStatus("로그인이 필요해요");
             if (linkWin != null && !linkWin.IsDisposed) { linkWin.ShowFront(); return; }
             var linkUrl = Program.Site + "?pc=link";
-            if (Settings.Get("relogin") == "1") linkUrl = "https://codiya.kr/bbs/logout.php?url=" + Uri.EscapeDataString(linkUrl); // 다른 아이디로
+            if (Settings.Get("relogin") == "1") linkUrl = "https://codiya.kr/bbs/logout.php?url=" + Uri.EscapeDataString(new Uri(linkUrl).PathAndQuery); // 돌아올 주소는 도메인 없이 // 다른 아이디로
             linkWin = new WebForm("코디야 로그인 · " + Program.AppName, linkUrl, 520, 720);
             linkWin.OnNavigate = url =>
             {

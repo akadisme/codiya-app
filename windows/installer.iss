@@ -43,10 +43,3 @@ Filename: "{app}\CodiyaMemo.exe"; Parameters: "/tray"; Flags: nowait skipifnotsi
 
 [UninstallRun]
 Filename: "{cmd}"; Parameters: "/C taskkill /IM CodiyaMemo.exe /F"; Flags: runhidden; RunOnceId: "KillApp"
-
-[Code]
-// 이용 안내 화면에서 [동의합니다]가 처음부터 선택돼 있게
-procedure InitializeWizard();
-begin
-  WizardForm.LicenseAcceptedRadio.Checked := True;
-end;

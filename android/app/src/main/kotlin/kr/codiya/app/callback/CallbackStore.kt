@@ -18,6 +18,24 @@ object CallbackStore {
 
     fun prefs(c: Context): SharedPreferences = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
+    // 👤 휴대폰 연락처에 저장된 이름 (그 번호만 찾아봄 · 찾은 이름은 잠깐 기억)
+    private val pnCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+    fun phoneName(c: Context, num: String): String {
+        val d = digits(num).filter { it.isDigit() }
+        if (d.length < 8) return ""
+        pnCache[d]?.let { return it }
+        if (c.checkSelfPermission(android.Manifest.permission.READ_CONTACTS) != android.content.pm.PackageManager.PERMISSION_GRANTED) return ""
+        val n = try {
+            c.contentResolver.query(android.net.Uri.withAppendedPath(android.provider.ContactsContract.PhoneLookup.CONTENT_FILTER_URI, android.net.Uri.encode(d)),
+                arrayOf(android.provider.ContactsContract.PhoneLookup.DISPLAY_NAME), null, null, null)?.use { if (it.moveToFirst()) (it.getString(0) ?: "").trim() else "" } ?: ""
+        } catch (e: Exception) { "" }
+        if (n.isNotEmpty()) pnCache[d] = n
+        return n
+    }
+    /** 화면에 보일 이름: 휴대폰에 저장된 이름 → 코디야 연락처 이름 → 없음("") */
+    fun dispName(c: Context, num: String, d: JSONObject?): String =
+        phoneName(c, num).ifEmpty { d?.optString("name", "") ?: "" }
+
     fun setDevice(c: Context, token: String, apiBase: String) {
         prefs(c).edit().putString("token", token).putString("api", apiBase).apply()
     }
@@ -126,6 +144,8 @@ object CallbackStore {
             try {
                 val url = URL(api(c) + "/v1/memo?token=" + URLEncoder.encode(token, "UTF-8") + "&hash=" + key +
                     "&mask=" + URLEncoder.encode(mask, "UTF-8") + "&call=" + (if (call && attempt == 1) 1 else 0) +
+                    // 👤 PC 전화팝업에도 휴대폰에 저장된 이름이 먼저 보이게 (울릴 때만 · 서버엔 1시간만 두고 지움)
+                    (if (call && attempt == 1 && num.isNotEmpty()) phoneName(c, num).let { if (it.isNotEmpty()) "&pname=" + URLEncoder.encode(it, "UTF-8") else "" } else "") +
                     // 🖥 PC 메모창: 울릴 때 번호를 같이 보내서 PC에 띄움 (서버엔 1시간만 두고 지움)
                     (if (call && attempt == 1 && num.isNotEmpty()) "&num=" + URLEncoder.encode(num, "UTF-8") else ""))
                 val con = (url.openConnection() as HttpURLConnection).apply { connectTimeout = 6000; readTimeout = 9000 }

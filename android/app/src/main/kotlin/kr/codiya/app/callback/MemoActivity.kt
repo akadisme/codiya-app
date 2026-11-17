@@ -284,7 +284,7 @@ class MemoActivity : Activity() {
 
     private fun render() {
         val d = data
-        val name = d?.optString("name", "") ?: ""
+        val name = if (d == null) "" else CallbackStore.dispName(this, num, d) // 👤 휴대폰 저장 이름 먼저
         val items = d?.optJSONArray("items")
         val n = items?.length() ?: 0
         val calls = d?.optInt("calls", 0) ?: 0

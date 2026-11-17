@@ -35,13 +35,13 @@ object MemoNotify {
     fun post(c: Context, num: String, d: JSONObject?) {
         if (d == null || muted) return
         curNum = num
-        val name = d.optString("name", "")
+        val name = CallbackStore.dispName(c, num, d) // 👤 휴대폰 저장 이름 먼저
         val items = d.optJSONArray("items")
         val n = items?.length() ?: 0
         channel(c)
         val calls = d.optInt("calls", 0)
         if (d.has("_loading")) { // 울리는 즉시 (내용은 받아오는 대로 같은 알림에 채움)
-            notify(c, NotificationCompat.Builder(c, CHANNEL).setContentTitle("📒 " + MemoPopup.pretty(num)).setContentText("고객 메모 확인 중…"))
+            notify(c, NotificationCompat.Builder(c, CHANNEL).setContentTitle("📒 " + (if (name.isNotEmpty()) "$name · " else "") + MemoPopup.pretty(num)).setContentText("고객 메모 확인 중…"))
             return
         }
         if (name.isEmpty() && n == 0) {

@@ -64,6 +64,35 @@ object MemoPopup {
     private var cbPart: LinearLayout? = null
     private var histScroll: ScrollView? = null
 
+    // ⏱ 통화 후 메모창: 정한 시간(기본 10초) 뒤 저절로 닫힘 · 창을 한 번이라도 누르면 멈춤
+    private var cdTv: TextView? = null
+    private var cdLeft = 0
+    private var cdApp: Context? = null
+    private val cdTick = object : Runnable {
+        override fun run() {
+            val c = cdApp ?: return
+            if (root == null || cdLeft <= 0) return
+            cdLeft--
+            if (cdLeft <= 0) { saveDraft(c); close(c); return }
+            cdTv?.text = "⏱ ${cdLeft}초 뒤에 닫혀요 · 누르면 멈춰요"
+            main.postDelayed(this, 1000)
+        }
+    }
+    private fun startCountdown(c: Context) {
+        val sec = CallbackStore.cachedConfig(c)?.optInt("memo_close", 10) ?: 10
+        stopCountdown()
+        if (sec <= 0) return
+        cdApp = c.applicationContext; cdLeft = sec
+        cdTv?.text = "⏱ ${sec}초 뒤에 닫혀요 · 누르면 멈춰요"
+        cdTv?.visibility = View.VISIBLE
+        main.postDelayed(cdTick, 1000)
+    }
+    private fun stopCountdown() {
+        main.removeCallbacks(cdTick)
+        cdLeft = 0
+        cdTv?.visibility = View.GONE
+    }
+
     /** 보기 좋은 번호 (가리지 않고 전체): 010-8678-3059 · *281 010-2068-2684 */
     fun pretty(num: String): String {
         val m = Regex("^([*#]\\d{3})(\\d+)$").find(num)
@@ -227,7 +256,12 @@ object MemoPopup {
         curNum = num; curKey = key; small = false
         data = CallbackStore.memoCached(c, key)
 
-        val r = FrameLayout(c).apply { setPadding(dp(c, 8f), 0, dp(c, 8f), 0) }
+        val r = object : FrameLayout(c) {
+            override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+                if (ev.actionMasked == MotionEvent.ACTION_DOWN && cdLeft > 0) stopCountdown() // 누르면 카운트 멈춤
+                return super.dispatchTouchEvent(ev)
+            }
+        }.apply { setPadding(dp(c, 8f), 0, dp(c, 8f), 0) }
         val outer = LinearLayout(c).apply {
             orientation = LinearLayout.VERTICAL
             background = round(c, Color.WHITE, 20f)
@@ -258,6 +292,8 @@ object MemoPopup {
         val minBtn = chip("작게", 0xFFEEF2F3.toInt(), 0xFF3B4850.toInt()).apply { setOnClickListener { setSmall(c, true) } }
         head.addView(minBtn)
         card.addView(head)
+        cdTv = tv("", 12.5f, GOLD, true).apply { visibility = View.GONE }
+        card.addView(cdTv, lp(6f))
 
         // 이름 고치기 (제목을 누르면 열림)
         val nr = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; visibility = View.GONE }
@@ -374,6 +410,7 @@ object MemoPopup {
         attached.add(r)
         root = r
         render(c)
+        startCountdown(c)
     }
 
     private fun setFocusable(c: Context, on: Boolean) {
@@ -404,7 +441,7 @@ object MemoPopup {
 
     private fun render(c: Context) {
         val d = data
-        val name = d?.optString("name", "") ?: ""
+        val name = if (d == null) "" else CallbackStore.dispName(c, curNum, d) // 👤 휴대폰 저장 이름 먼저
         val items = d?.optJSONArray("items")
         val n = items?.length() ?: 0
         val calls = d?.optInt("calls", 0) ?: 0
@@ -507,6 +544,7 @@ object MemoPopup {
     }
 
     fun close(c: Context) {
+        stopCountdown()
         val wm = c.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         attached.forEach { v -> runCatching { wm.removeView(v) } }
         attached.clear()
@@ -535,6 +573,7 @@ object MemoPopup {
             ok = runCatching {
                 if (root == null || cardBox == null || cbPart != null || CallbackStore.memoKey(num) != curKey) return@runCatching false
                 buildCallback(c.applicationContext, num, missed, list, hint)
+                stopCountdown() // 아래에 콜백문자가 붙으면 저절로 닫지 않음 (보낼지 고를 수 있게)
                 if (small) setSmall(c.applicationContext, false)
                 true
             }.getOrDefault(false)

@@ -49,6 +49,26 @@ class PsmsService : Service() {
         fun on(c: Context): Boolean = CallbackStore.prefs(c).getBoolean("psms_on", false)
         fun allowed(c: Context): Boolean = c.checkSelfPermission(Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED
 
+        /** 서버에 이 휴대폰을 PC 문자 발송 휴대폰으로 등록 (백그라운드에서) — 한 번에 켜기에서 기본으로 켜요 */
+        fun enableServer(c: Context, on: Boolean): Boolean {
+            val app = c.applicationContext
+            val tok = CallbackStore.prefs(app).getString("token", "") ?: ""
+            if (tok.isEmpty()) return false
+            return try {
+                val con = URL(CallbackStore.api(app) + "/v1/psms/enable").openConnection() as HttpURLConnection
+                con.connectTimeout = 8000; con.readTimeout = 12000; con.requestMethod = "POST"; con.doOutput = true
+                con.setRequestProperty("Content-Type", "application/json")
+                con.outputStream.use { it.write(JSONObject().put("token", tok).put("on", if (on) 1 else 0).put("model", Build.MANUFACTURER + " " + Build.MODEL).toString().toByteArray()) }
+                val code = con.responseCode
+                val txt = (if (code in 200..299) con.inputStream else con.errorStream)?.bufferedReader()?.use { it.readText() } ?: ""
+                val j = runCatching { JSONObject(txt) }.getOrNull()
+                val ok = code in 200..299 && j?.optBoolean("ok") == true
+                if (ok) CallbackStore.prefs(app).edit().putBoolean("psms_on", on).apply()
+                if (ok && on && j?.optBoolean("pending") == true) kick(app)
+                ok
+            } catch (e: Exception) { false }
+        }
+
         /** 보낼 게 있는지 확인 시작 (푸시 · 앱 열 때) */
         fun kick(c: Context) {
             if (!on(c) || !allowed(c) || running) return
@@ -96,7 +116,11 @@ class PsmsService : Service() {
         var idle = 0
         while (!stopReq) {
             val r = api("GET", "/v1/psms/next", null) ?: break
-            if (r.optBoolean("off")) { CallbackStore.prefs(this).edit().putBoolean("psms_on", false).apply(); break }
+            if (r.optBoolean("off")) {
+                CallbackStore.prefs(this).edit().putBoolean("psms_on", false).apply()
+                if (r.optBoolean("other")) otherPhone() // 다른 휴대폰이 연동됨 → 이 휴대폰은 꺼졌다고 알려 줌
+                break
+            }
             val job = r.optJSONObject("job")
             if (job == null) {
                 if (r.optBoolean("busy") && idle++ < 3) { Thread.sleep(8000); continue }
@@ -225,6 +249,19 @@ class PsmsService : Service() {
     private fun notifyProgress(title: String, total: Int, done: Int) {
         val n = progress(title, "$done / $total · PC에서 보낸 문자를 내 휴대폰으로 보내고 있어요", total, done)
         runCatching { NotificationManagerCompat.from(this).notify(NID, n) }
+    }
+
+    /** 📱 다른 휴대폰이 PC 문자 발송에 연동돼서 이 휴대폰은 꺼졌을 때 */
+    private fun otherPhone() {
+        channels()
+        CallbackStore.diag(this, "📤 다른 휴대폰이 연동돼서 이 휴대폰의 PC 문자 발송이 꺼졌어요")
+        val n = NotificationCompat.Builder(this, CH_DONE)
+            .setSmallIcon(R.drawable.ic_stat_notify).setColor(0xFF0AA394.toInt())
+            .setContentTitle("📱 다른 휴대폰이 연동돼서 꺼졌어요")
+            .setContentText("PC 문자 발송은 이제 새로 연동한 휴대폰에서 보내요")
+            .setStyle(NotificationCompat.BigTextStyle().bigText("PC 문자 발송은 이제 새로 연동한 휴대폰에서 보내요. 이 휴대폰으로 다시 보내려면 코디야 앱 → 콜백문자 → [📤 PC 문자 발송]을 켜 주세요."))
+            .setAutoCancel(true).build()
+        runCatching { NotificationManagerCompat.from(this).notify(NID_DONE + 1, n) }
     }
 
     private fun finishAll() {

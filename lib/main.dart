@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'callback_screen.dart';
 import 'config.dart';
@@ -62,6 +63,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final c = navKey.currentState?.overlay?.context;
       if (c != null) UpdateCheck.run(c, force: true);
+      Future.delayed(const Duration(seconds: 6), _maybeSetup);
     });
     _sub = PushService.instance.taps.stream.listen((t) {
       if (t.link.startsWith('http')) {
@@ -77,6 +79,25 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       final c = navKey.currentState?.overlay?.context;
       if (c != null) UpdateCheck.run(c); // 다시 열 때도 (30분에 한 번)
+      Future.delayed(const Duration(seconds: 3), _maybeSetup);
+    }
+  }
+
+  /// 앱에서 처음 로그인하면 "✅ 한 번에 켜기" 화면을 한 번 자동으로 (다 켜져 있거나 이미 한 번 보여줬으면 안 뜸)
+  bool _setupBusy = false;
+  Future<void> _maybeSetup() async {
+    if (_setupBusy || !mounted) return;
+    _setupBusy = true;
+    try {
+      final sp = await SharedPreferences.getInstance();
+      if (sp.getBool('setup_auto_shown') == true) return;
+      final s = await CallbackBridge.status();
+      if (s['supported'] != true || s['linked'] != true) return; // 로그인 전이면 다음에
+      final ready = s['role'] == true && s['phone'] == true && s['notify'] == true && s['overlay'] == true && s['calllog'] == true && s['contacts'] == true;
+      await sp.setBool('setup_auto_shown', true);
+      if (!ready) _openCallback();
+    } finally {
+      _setupBusy = false;
     }
   }
 

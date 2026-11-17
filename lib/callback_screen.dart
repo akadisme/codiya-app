@@ -84,6 +84,63 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
   bool get _notify => _s['notify'] == true;
   bool get _overlay => _s['overlay'] == true;
   bool get _allOn => _role && _phone && _notify;
+  // ✅ 한 번에 켜기: 핵심이 다 켜졌는지 (번호 확인 · 전화 · 알림 · 통화기록 · 연락처 · 다른 앱 위에 표시)
+  bool get _ready => _allOn && _overlay && _s['calllog'] == true && _s['contacts'] == true;
+
+  Widget _feat(String icon, String title, String desc, bool on) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(icon, style: const TextStyle(fontSize: 20)),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5)),
+            const SizedBox(height: 2),
+            Text(desc, style: const TextStyle(color: Color(0xFF5B6870), fontSize: 12.5, height: 1.45)),
+          ]),
+        ),
+        if (on) const Padding(padding: EdgeInsets.only(left: 6, top: 2), child: Icon(Icons.check_circle, color: mint, size: 20)),
+      ]),
+    );
+  }
+
+  /// 맨 위: 무엇이 연결되는지 한 페이지로 + [동의하고 한 번에 켜기] 버튼 하나
+  Widget _setupCard() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _ready ? mint.withValues(alpha: .5) : gold.withValues(alpha: .45), width: 1.5),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(_ready ? '✅ 다 켜졌어요' : '✅ 버튼 한 번으로 다 켜기',
+            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
+        const SizedBox(height: 4),
+        Text(_ready ? '전화가 오면 전화팝업이 떠요. 아래에서 하나씩 다시 확인할 수 있어요.'
+                    : '아래 기능이 한 번에 연결돼요. 버튼을 누르고 뜨는 창마다 [허용]만 눌러 주세요.',
+            style: const TextStyle(color: Color(0xFF5B6870), fontSize: 13.5, height: 1.5)),
+        const SizedBox(height: 14),
+        _feat('📞', '전화팝업', '전화가 울리면 누구인지 · 지난 메모를 먼저 보여줘요. 휴대폰에 저장된 이름이 먼저 떠요.',
+            _role && _phone && _s['calllog'] == true && _s['contacts'] == true),
+        _feat('📨', '콜백문자', '통화가 끝나면 골라 보내는 문자 창이 떠요. (내 문자앱으로 나가요)', _overlay),
+        _feat('🎙', '통화요약 (처음 5통 무료)', '휴대폰 "통화 자동 녹음" 파일을 AI가 받아써서 요약해 고객 메모에 저장해요. 녹음 파일은 요약 후 서버에 남기지 않아요.', _s['rec'] == true),
+        _feat('📤', 'PC 문자 발송', 'PC 코디야에서 보낸 문자를 이 휴대폰 문자로 보내요. (문자비 0원)', _s['psms'] == true),
+        _feat('🔔', '알림', '통화요약 도착 · 고객센터 답변 알림을 받아요.', _notify),
+        if (!_ready) ...[
+          const SizedBox(height: 6),
+          const Text(
+              '버튼을 누르면 ① 걸려온 번호 확인 → ② 권한 묶음(전화 · 통화 기록 · 연락처 · 오디오 파일 · 문자 · 알림) → ③ 다른 앱 위에 표시 → ④ 배터리 "제한 없음" 순서로 창이 떠요.\n'
+              '통화 녹음 파일과 걸려온 번호의 저장 이름은 통화요약 · 전화팝업에만 쓰고, 다른 곳에 보내지 않아요.',
+              style: TextStyle(color: Color(0xFF7A8A92), fontSize: 12, height: 1.55)),
+          const SizedBox(height: 12),
+          _btn('동의하고 한 번에 켜기', gold, () => CallbackBridge.call('setupAll'), icon: Icons.check_circle_outline),
+        ],
+      ]),
+    );
+  }
 
   void _manage() {
     Navigator.of(context).popUntil((r) => r.isFirst);
@@ -176,6 +233,11 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
                   child: Text('통화 감지는 안드로이드 10 이상에서 쓸 수 있어요.\n홈페이지의 "직접 보내기"는 계속 쓸 수 있어요.'),
                 )
               : ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 32), children: [
+                  _setupCard(),
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(4, 0, 4, 10),
+                    child: Text('하나씩 직접 켜기 · 확인하기', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5, color: Color(0xFF3B4850))),
+                  ),
                   Container(
                     padding: const EdgeInsets.all(14),
                     margin: const EdgeInsets.only(bottom: 14),
@@ -216,14 +278,14 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
                   _step(6, '📇 명함 등록 (AI가 읽어요)', '고객 명함을 찍으면 AI가 이름·회사·전화번호를 읽어서 그 번호 고객에 자동으로 붙여요. 그 고객이 전화하면 받기 전에 명함이 보여요. (통화 중 메모 화면의 [📇 명함] 버튼으로도 등록할 수 있어요)',
                       false, '📇 명함 찍어서 등록', const Color(0xFF0AA394), () => CallbackBridge.call('cardRegister')),
                   _step(7, '🎙 통화녹음 AI 요약', '휴대폰 전화 앱의 "통화 자동 녹음"을 켜두면, 통화가 끝난 뒤 녹음을 AI가 받아써서 한 줄 요약과 함께 고객 메모에 저장해요. 녹음 파일은 요약 후 서버에 남기지 않아요. (에이닷·갤럭시 AI 요약을 안 쓰는 분께 추천)',
-                      false, _s['rec'] == true ? '🎙 켜져 있어요 (누르면 끄기)' : '🎙 녹음 요약 켜기', const Color(0xFF7A5AF8),
+                      false, _s['rec'] == true ? '🎙 켜져 있어요 (누르면 끄기)' : '🎙 통화요약 켜기 (처음 5통 무료)', const Color(0xFF7A5AF8),
                       () async { await CallbackBridge.call('recOn', {'on': _s['rec'] != true}); await _refresh(); }),
                   _step(8, '🔋 배터리 "제한 없음"', '삼성 배터리 절약이 뒤에서 인터넷을 막으면 전화가 올 때 고객 메모를 못 불러와요. 앱 정보에서 [배터리] → "제한 없음", [모바일 데이터] → "백그라운드 데이터 사용 허용"을 켜주세요.',
                       _s['battery'] == true && _s['saver'] != true, '🔋 앱 정보 열기', mint, () => CallbackBridge.call('openBattery')),
                   _step(9, '📤 PC 문자 발송 (내 휴대폰으로 무료)', 'PC 코디야 [문자·단체·예약]에서 "내 휴대폰으로(무료)"를 골라 보내면, 이 휴대폰이 문자를 한 통씩 자동으로 보내요. 내 휴대폰 요금제의 문자로 나가서 문자 비용이 따로 들지 않아요. 예약 발송도 돼요.',
                       _s['psms'] == true, _s['psms'] == true ? '📤 켜져 있어요 (설정 보기)' : '📤 PC 문자 발송 켜기', const Color(0xFF0AA394),
                       () async { await CallbackBridge.call('psmsOpen'); }),
-                  _step(10, '문자 템플릿 만들기', (_s['templates'] ?? 0) > 0
+                  _step(10, '콜백템플릿 만들기', (_s['templates'] ?? 0) > 0
                       ? '템플릿 ${_s['templates']}개가 알림 버튼으로 나와요. 현장이 여러 개면 홈페이지에서 템플릿을 늘릴 수 있어요.'
                       : (_s['linked'] == true
                           ? '홈페이지에서 현장 안내 문자(템플릿)를 1개 만들어주세요. 자동 알림까지 무료예요.'

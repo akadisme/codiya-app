@@ -15,6 +15,8 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <!-- 📤 PC 문자 발송: PC에서 보낸 문자를 이 휴대폰 문자로 보내기 (문자함 읽기 권한은 쓰지 않음) -->
     <uses-permission android:name="android.permission.SEND_SMS" />
+    <!-- 👤 전화팝업: 휴대폰에 저장된 이름을 먼저 보여 주기 (그 번호 이름만 찾아봄) -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />

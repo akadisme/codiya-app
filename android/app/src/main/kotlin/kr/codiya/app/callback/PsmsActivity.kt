@@ -32,6 +32,11 @@ class PsmsActivity : Activity() {
         setLineSpacing(0f, 1.25f)
     }
 
+    @Suppress("DEPRECATION")
+    private fun lightStatusBar() {
+        window.decorView.systemUiVisibility = window.decorView.systemUiVisibility or android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20f), dp(24f), dp(20f), dp(24f)); setBackgroundColor(Color.WHITE) }
@@ -58,7 +63,10 @@ class PsmsActivity : Activity() {
         }
         root.addView(btn, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         root.addView(tv("💡 배터리 '제한 없음'으로 두면 화면이 꺼져 있어도 바로 보내요. (앱 · 콜백문자 설정의 🔋 단계)", 13f, MUTE).apply { setPadding(0, dp(14f), 0, 0) })
-        setContentView(ScrollView(this).apply { addView(root) })
+        // 위쪽 검정 제목줄 없이 밝게 (휴대폰 상단 시계줄과 겹치지 않게 여백)
+        window.statusBarColor = Color.WHITE
+        if (Build.VERSION.SDK_INT >= 23) lightStatusBar()
+        setContentView(ScrollView(this).apply { fitsSystemWindows = true; setBackgroundColor(Color.WHITE); addView(root) })
         render()
     }
 

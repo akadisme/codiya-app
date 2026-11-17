@@ -88,7 +88,8 @@
         <activity
             android:name=".callback.PsmsActivity"
             android:exported="false"
-            android:label="PC 문자 발송" />
+            android:label="PC 문자 발송"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
         <!-- 푸시: "PC 문자 보낼 차례" 조용한 신호 받기 (나머지 알림은 원래대로) -->
         <service
             android:name="io.flutter.plugins.firebase.messaging.FlutterFirebaseMessagingService"

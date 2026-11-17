@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -80,7 +81,12 @@ class WebTabState extends State<WebTab> {
 
   Future<void> _setup() async {
     final ua = await _c.getUserAgent();
-    await _c.setUserAgent('${ua ?? ''}$appUserAgentSuffix');
+    // 앱 버전은 설치된 앱에서 바로 읽어요 (예전엔 1.1.2로 고정돼 있어서 업데이트해도 홈페이지가 "업데이트"로 보였음)
+    var ver = '';
+    try {
+      ver = (await PackageInfo.fromPlatform()).version;
+    } catch (_) {}
+    await _c.setUserAgent('${ua ?? ''}${ver.isEmpty ? appUserAgentSuffix : ' CodiyaApp/$ver'}');
     await _c.loadRequest(Uri.parse(widget.initialUrl));
   }
 

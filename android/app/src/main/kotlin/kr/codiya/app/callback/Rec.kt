@@ -17,14 +17,11 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 /**
  * 🎙 통화요약: 받은 통화가 끝나면 휴대폰 '통화 자동 녹음' 파일을 찾아 서버로 →
  * 받아쓰기 + 요약이 그 고객 메모에 저장 (녹음 파일은 서버에 남기지 않음) → "📝 통화요약 도착" 알림
- *  · 처음 5통 무료 체험 · 그 뒤는 요금제 한도 안에서 (서버가 셈 · 1건 = 최대 5분)
+ *  · 처음 5통 무료 체험 · 그 뒤는 요금제 한도 안에서 (서버가 셈 · 1통 = 1건 · 긴 통화는 앞 20분까지 요약)
  *  · 남은 건수가 없으면 녹음 파일을 올리지 않음 (데이터 · 배터리 아낌)
  *  · 녹음 파일 위치는 휴대폰마다 달라서 폴더를 정하지 않고, 끊은 시각 · 파일 이름(번호 · 저장 이름)으로 찾음
  */
@@ -53,7 +50,7 @@ object Rec {
                 return@Thread
             }
             if (chk != null && chk.optBoolean("ok") && chk.optInt("left", 1) <= 0) {
-                CallbackStore.diag(app, "🎙 통화요약: 남은 건수가 없어요")
+                CallbackStore.diag(app, "🎙 통화요약: 이번 달 남은 통 수가 없어요")
                 quotaNote(app, chk.optString("msg"))
                 return@Thread
             }
@@ -163,7 +160,7 @@ object Rec {
         val who = if (name.isNotEmpty()) name else MemoPopup.pretty(num)
         val first = summary.lines().firstOrNull { it.isNotBlank() }?.trim() ?: "통화 내용을 고객 메모에 저장했어요"
         var text = summary.ifBlank { first }
-        if (trial) text += "\n\n🎁 무료 체험" + (if (left in 0..999) " · 남은 건수 ${left}건" else "")
+        if (trial) text += "\n\n🎁 무료 체험" + (if (left in 0..999) " · 남은 ${left}통" else "")
         if (msg.isNotEmpty()) text += "\n" + msg
         val i = Intent(c, MemoActivity::class.java).putExtra("num", num)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
@@ -178,19 +175,8 @@ object Rec {
         }
     }
 
-    /** 남은 건수가 없을 때 알림 (한 달에 한 번만) */
+    /** 다 썼을 때: 안내 알림은 서버가 앱 알림으로 보내요 ([무제한으로 바꾸기]를 누르면 앱에서 신청 화면이 열림 · 한 달에 한 번) → 여기서는 기록만 */
     private fun quotaNote(c: Context, msg: String) {
-        val ym = SimpleDateFormat("yyyyMM", Locale.KOREA).format(Date())
-        val p = CallbackStore.prefs(c)
-        if (p.getString("rec_quota_note", "") == ym) return
-        p.edit().putString("rec_quota_note", ym).apply()
-        channel(c)
-        val t = msg.ifEmpty { "통화요약 건수를 다 썼어요. 전화팝업 · 메모는 그대로 써요." }
-        runCatching {
-            NotificationManagerCompat.from(c).notify(7649, NotificationCompat.Builder(c, CH)
-                .setSmallIcon(R.drawable.ic_stat_notify).setColor(0xFF0AA394.toInt())
-                .setContentTitle("🎙 통화요약을 다 썼어요")
-                .setContentText(t).setStyle(NotificationCompat.BigTextStyle().bigText(t)).setAutoCancel(true).build())
-        }
+        CallbackStore.diag(c, "🎙 통화요약 다 씀 · " + msg.take(60))
     }
 }

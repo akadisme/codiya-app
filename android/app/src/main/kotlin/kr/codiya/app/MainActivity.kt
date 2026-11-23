@@ -18,6 +18,7 @@ class MainActivity : FlutterActivity() {
     override fun onResume() {
         super.onResume()
         kr.codiya.app.callback.PsmsService.kick(this) // 📤 PC에서 보낸 문자가 기다리고 있으면 보내기 (푸시를 놓쳤을 때)
+        psmsAutoOn() // v1.2.7: 문자 권한이 있으면 PC 문자 발송은 알아서 켜 둠 (따로 켤 필요 없게)
         setupResume()
     }
 
@@ -118,6 +119,24 @@ class MainActivity : FlutterActivity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == 7732 && setupStep == 2) afterPerms()
+        if (requestCode == 7740) {
+            if (kr.codiya.app.callback.PsmsService.allowed(this)) { psmsAutoOn(); toast("✅ 문자 허용 완료 · 콜백문자와 PC 문자 발송을 쓸 수 있어요") }
+            else psmsRestrictedGuide()
+        }
+    }
+
+    /** 📤 문자 권한이 있는데 PC 문자 발송이 꺼져 있으면 서버에 켜 둠 */
+    private fun psmsAutoOn() {
+        if (!kr.codiya.app.callback.PsmsService.allowed(this) || kr.codiya.app.callback.PsmsService.on(this)) return
+        if ((CallbackStore.prefs(this).getString("token", "") ?: "").isEmpty()) return
+        val app = applicationContext
+        Thread { kr.codiya.app.callback.PsmsService.enableServer(app, true) }.start()
+    }
+
+    /** apk 로 설치하면 안드로이드가 문자 권한을 막아요 ('제한된 설정') → 앱 정보에서 풀도록 안내 */
+    private fun psmsRestrictedGuide() {
+        toast("앱 정보 오른쪽 위 ⋮ → '제한된 설정 허용' → [권한] → SMS(문자) '허용'을 눌러 주세요")
+        runCatching { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) }
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -156,6 +175,17 @@ class MainActivity : FlutterActivity() {
                         val perms = mutableListOf(Manifest.permission.READ_CALL_LOG)
                         if (Build.VERSION.SDK_INT >= 26) perms.add(Manifest.permission.ANSWER_PHONE_CALLS) // 메모 화면 [📞 전화 받기]
                         requestPermissions(perms.toTypedArray(), 7703)
+                    }
+                    result.success(true)
+                }
+                "smsAllow" -> { // v1.2.7: 문자 허용 (콜백문자 · PC 문자 발송) — 막혀 있으면 앱 정보로 안내
+                    if (kr.codiya.app.callback.PsmsService.allowed(this)) { psmsAutoOn(); toast("✅ 문자는 이미 허용돼 있어요") }
+                    else {
+                        val p = CallbackStore.prefs(this)
+                        if (!p.getBoolean("sms_asked", false) || shouldShowRequestPermissionRationale(Manifest.permission.SEND_SMS)) {
+                            p.edit().putBoolean("sms_asked", true).apply()
+                            requestPermissions(arrayOf(Manifest.permission.SEND_SMS), 7740)
+                        } else psmsRestrictedGuide()
                     }
                     result.success(true)
                 }

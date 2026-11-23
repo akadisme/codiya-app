@@ -132,7 +132,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
       final s = await CallbackBridge.status();
       if (s['supported'] != true || s['linked'] != true) return; // 로그인 전이면 다음에
       _linkedSeen = true;
-      final ready = s['role'] == true && s['phone'] == true && s['notify'] == true && s['overlay'] == true && s['calllog'] == true && s['contacts'] == true && s['summary'] == true;
+      final ready = s['role'] == true && s['phone'] == true && s['notify'] == true && s['overlay'] == true && s['calllog'] == true && s['contacts'] == true && s['summary'] == true && s['psms'] == true;
       if (ready) {
         await PushService.instance.cancelSetupReminder();
         return;
@@ -210,7 +210,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
     navKey.currentState?.push(MaterialPageRoute(builder: (_) => CallbackScreen(onOpenLink: _openLink))).then((_) async {
       // 설정 화면에서 돌아오면 다 켜졌는지 확인 → 다 켜졌으면 예약 알림 취소
       final s = await CallbackBridge.status();
-      final ready = s['role'] == true && s['phone'] == true && s['notify'] == true && s['overlay'] == true && s['calllog'] == true && s['contacts'] == true && s['summary'] == true;
+      final ready = s['role'] == true && s['phone'] == true && s['notify'] == true && s['overlay'] == true && s['calllog'] == true && s['contacts'] == true && s['summary'] == true && s['psms'] == true;
       if (ready) await PushService.instance.cancelSetupReminder();
     });
   }

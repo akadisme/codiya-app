@@ -85,7 +85,7 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
   bool get _overlay => _s['overlay'] == true;
   bool get _allOn => _role && _phone && _notify;
   // ✅ 한 번에 켜기: 핵심이 다 켜졌는지 (번호 확인 · 전화 · 알림 · 통화기록 · 연락처 · 다른 앱 위에 표시)
-  bool get _ready => _allOn && _overlay && _s['calllog'] == true && _s['contacts'] == true && _s['summary'] == true;
+  bool get _ready => _allOn && _overlay && _s['calllog'] == true && _s['contacts'] == true && _s['summary'] == true && _s['psms'] == true;
 
   Widget _feat(String icon, String title, String desc, bool on) {
     return Padding(
@@ -219,6 +219,10 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
         if (s['calllog'] != true && mounted) await CallbackBridge.call('openAppSettings');
       });
     }
+    if (_s['psms'] != true) {
+      add('💬 문자 보내기', '이걸 허용해야 콜백문자가 나가고, PC에서 보내는 문자(단체 · 예약)도 이 휴대폰으로 무료로 나가요. 허용하면 PC 문자 발송도 자동으로 켜져요.\n허용 창 대신 "액세스가 거부됨"이 뜨면: 앱 정보 ⋮ → "제한된 설정 허용" → 권한 → SMS 허용',
+          '💬 허용하기', const Color(0xFF0AA394), () => CallbackBridge.call('smsAllow'));
+    }
     if (_s['summary'] != true) {
       add('🤖 알림 읽기 (통화요약)', '이걸 허용해야 에이닷 · 익시오 · 갤럭시 AI 통화요약이 그 고객 메모에 자동으로 저장돼요. (요약 알림만 읽어요)',
           '🤖 허용하기', const Color(0xFF3A86D8), () => CallbackBridge.call('requestSummary'));
@@ -309,9 +313,7 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
                   } : null),
                   const SizedBox(height: 10),
                   _btn('템플릿·설정·발송내역·이용권', sky, _manage, soft: true),
-                  const SizedBox(height: 10),
-                  _btn(_s['psms'] == true ? '📤 PC 문자 발송 (켜져 있어요 · 설정 보기)' : '📤 PC 문자 발송 켜기 (선택 · 내 휴대폰으로 무료)', const Color(0xFF0AA394),
-                      () async { await CallbackBridge.call('psmsOpen'); }, soft: true),
+
                   if ((_s['diag'] ?? '').toString().isNotEmpty) ...[
                     const SizedBox(height: 16),
                     Container(

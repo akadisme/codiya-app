@@ -7,8 +7,11 @@ import 'config.dart';
 
 /// 홈페이지(그누보드)를 보여주는 화면
 class WebTab extends StatefulWidget {
-  const WebTab({super.key, required this.initialUrl, required this.onAppLink});
+  const WebTab({super.key, required this.initialUrl, required this.onAppLink, this.onPageDone});
   final String initialUrl;
+
+  /// 페이지를 다 불러왔을 때 (로그인 직후 설정 안내용)
+  final void Function(String url)? onPageDone;
 
   /// codiya://inbox 같은 앱 전용 링크
   final void Function(Uri uri) onAppLink;
@@ -70,8 +73,9 @@ class WebTabState extends State<WebTab> {
           if (mounted) setState(() => _progress = p);
         },
         onPageStarted: (_) => _scrollY = 0,
-        onPageFinished: (_) {
+        onPageFinished: (u) {
           if (mounted && _refreshing) setState(() => _refreshing = false);
+          widget.onPageDone?.call(u);
         },
         onNavigationRequest: (req) => _decide(req.url),
       ))

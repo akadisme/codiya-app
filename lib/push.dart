@@ -8,6 +8,8 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:timezone/data/latest.dart' as tzdata;
+import 'package:timezone/timezone.dart' as tz;
 import 'package:webview_flutter/webview_flutter.dart';
 
 import 'api.dart';
@@ -156,6 +158,40 @@ class PushService {
       ),
       payload: jsonEncode(m.data),
     );
+  }
+
+  /// v1.2.6: 전화팝업 · 콜백문자 설정을 안 했으면 다음 오전 10시에 안내 알림 (설정을 다 하면 취소)
+  static const _setupNid = 9100;
+  Future<void> scheduleSetupReminder() async {
+    if (!Platform.isAndroid) return;
+    try {
+      tzdata.initializeTimeZones();
+      final seoul = tz.getLocation('Asia/Seoul');
+      final now = tz.TZDateTime.now(seoul);
+      var t = tz.TZDateTime(seoul, now.year, now.month, now.day, 10);
+      if (!t.isAfter(now.add(const Duration(minutes: 1)))) t = t.add(const Duration(days: 1));
+      await _local.zonedSchedule(
+        _setupNid,
+        '📞 전화팝업 · 콜백문자 설정이 아직이에요',
+        '전화 온 고객이 누군지 바로 보이고, 끊으면 콜백문자가 자동으로 가요. 고객관리가 훨씬 편해져요. 눌러서 1분이면 설정돼요.',
+        t,
+        NotificationDetails(
+          android: AndroidNotificationDetails(_channel.id, _channel.name,
+              channelDescription: _channel.description, importance: Importance.high, priority: Priority.high, icon: 'ic_stat_notify',
+              styleInformation: const BigTextStyleInformation('전화 온 고객이 누군지 바로 보이고, 끊으면 콜백문자가 자동으로 가요. 고객관리가 훨씬 편해져요. 눌러서 1분이면 설정돼요.')),
+        ),
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        payload: jsonEncode({'link': 'codiya://callback'}),
+      );
+    } catch (e) {
+      debugPrint('설정 안내 예약 실패: $e');
+    }
+  }
+
+  Future<void> cancelSetupReminder() async {
+    try {
+      await _local.cancel(_setupNid);
+    } catch (_) {}
   }
 
   void _emit(Map<String, dynamic> data) {

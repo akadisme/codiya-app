@@ -1,7 +1,7 @@
 name: codiya_app
 description: 코디야 앱
 publish_to: 'none'
-version: 1.2.5+48
+version: 1.2.6+49
 
 environment:
   sdk: ^3.7.0
@@ -12,6 +12,7 @@ dependencies:
   firebase_core: ^3.13.0
   firebase_messaging: ^15.2.5
   flutter_local_notifications: ^19.1.0
+  timezone: ^0.10.0
   webview_flutter: ^4.10.0
   url_launcher: ^6.3.1
   shared_preferences: ^2.5.3

@@ -27,8 +27,8 @@ class MainActivity : FlutterActivity() {
     private fun toast(s: String) = android.widget.Toast.makeText(this, s, android.widget.Toast.LENGTH_LONG).show()
 
     private fun setupStart() {
-        // 기본값: 통화요약(처음 5통 무료) 켜기 — 이 화면에서 동의했으니까
-        CallbackStore.prefs(this).edit().putBoolean("rec_on", true).putBoolean("setup_done", false).apply()
+        // v1.2.4: 통화녹음 AI 요약은 쓰지 않아요 (에이닷 · 익시오 등 통화요약 자동 저장으로)
+        CallbackStore.prefs(this).edit().putBoolean("rec_on", false).putBoolean("setup_done", false).apply()
         setupStep = 1
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val rm = getSystemService(RoleManager::class.java)
@@ -43,7 +43,7 @@ class MainActivity : FlutterActivity() {
         setupStep = 2
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) { setupOverlay(); return }
         val want = mutableListOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.READ_CALL_LOG, Manifest.permission.READ_CONTACTS,
-            Manifest.permission.SEND_SMS, kr.codiya.app.callback.Rec.perm())
+            Manifest.permission.SEND_SMS)
         if (Build.VERSION.SDK_INT >= 26) want.add(Manifest.permission.ANSWER_PHONE_CALLS)
         if (Build.VERSION.SDK_INT >= 33) want.add(Manifest.permission.POST_NOTIFICATIONS)
         val need = want.filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
@@ -66,11 +66,26 @@ class MainActivity : FlutterActivity() {
             toast("목록에서 '코디야'를 켜고 ◀ 뒤로 가기를 눌러 주세요")
             runCatching { startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))); return }
         }
+        setupSummary()
+    }
+
+    /** 🤖 통화요약 자동 저장: 알림 읽기 허용 (에이닷 · 익시오 · 갤럭시 AI 요약을 고객 메모에) */
+    private fun setupSummary() {
+        setupStep = 4
+        if (!kr.codiya.app.callback.SummaryListener.enabled(this)) {
+            toast("목록에서 '코디야'를 켜고 ◀ 뒤로 가기를 눌러 주세요 (통화요약 자동 저장)")
+            val ok = runCatching {
+                if (Build.VERSION.SDK_INT >= 30) startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS)
+                    .putExtra(Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME, kr.codiya.app.callback.SummaryListener.component(this).flattenToString()))
+                else startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+            }.isSuccess || runCatching { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }.isSuccess
+            if (ok) return
+        }
         setupBattery()
     }
 
     private fun setupBattery() {
-        setupStep = 4
+        setupStep = 5
         val pm = getSystemService(POWER_SERVICE) as android.os.PowerManager
         if (Build.VERSION.SDK_INT >= 23 && !pm.isIgnoringBatteryOptimizations(packageName)) {
             toast("[배터리] → '제한 없음'을 고르고 ◀ 뒤로 가기를 눌러 주세요")
@@ -88,8 +103,9 @@ class MainActivity : FlutterActivity() {
     /** 설정 화면에서 돌아왔을 때 다음 단계로 */
     private fun setupResume() {
         when (setupStep) {
-            3 -> setupBattery()
-            4 -> setupFinish()
+            3 -> setupSummary()
+            4 -> setupBattery()
+            5 -> setupFinish()
         }
     }
 

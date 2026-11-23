@@ -28,7 +28,7 @@ import java.net.URLEncoder
 object Rec {
     private const val CH = "rec_summary"
 
-    fun on(c: Context) = CallbackStore.prefs(c).getBoolean("rec_on", false)
+    fun on(c: Context) = false // v1.2.4: 통화녹음 AI 요약은 쓰지 않아요 (에이닷 · 익시오 등 통화요약 자동 저장으로)
 
     fun perm(): String = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
     fun allowed(c: Context) = c.checkSelfPermission(perm()) == PackageManager.PERMISSION_GRANTED

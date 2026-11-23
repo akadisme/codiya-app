@@ -90,12 +90,15 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
     _setupBusy = true;
     try {
       final sp = await SharedPreferences.getInstance();
-      if (sp.getBool('setup_auto_shown') == true) return;
+      // v1.2.4: 빠진 설정이 있으면 하루 한 번 다시 (다 켜지면 안 뜸)
+      final today = DateTime.now().toIso8601String().substring(0, 10);
+      if (sp.getString('setup_auto_day') == today) return;
       final s = await CallbackBridge.status();
       if (s['supported'] != true || s['linked'] != true) return; // 로그인 전이면 다음에
-      final ready = s['role'] == true && s['phone'] == true && s['notify'] == true && s['overlay'] == true && s['calllog'] == true && s['contacts'] == true;
-      await sp.setBool('setup_auto_shown', true);
-      if (!ready) _openCallback();
+      final ready = s['role'] == true && s['phone'] == true && s['notify'] == true && s['overlay'] == true && s['calllog'] == true && s['contacts'] == true && s['summary'] == true;
+      if (ready) return;
+      await sp.setString('setup_auto_day', today);
+      _openCallback();
     } finally {
       _setupBusy = false;
     }

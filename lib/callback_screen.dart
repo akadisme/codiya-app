@@ -186,6 +186,70 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
     );
   }
 
+  /// 아직 안 된 것만 — 무엇을 허용하면 어떤 기능을 쓸 수 있는지
+  List<Widget> _missingList() {
+    final items = <Widget>[];
+    var n = 0;
+    void add(String title, String why, String btn, Color color, VoidCallback onTap) {
+      n++;
+      items.add(_step(n, title, why, false, btn, color, onTap));
+    }
+
+    if (!_role) {
+      add('🔍 걸려온 번호 확인', '이걸 허용해야 전화가 올 때 누구인지(고객 이름 · 저장 안 된 번호) 전화팝업에 보여요.\n"기본 발신번호 표시 및 스팸 앱" 창에서 [기본으로 설정]을 눌러주세요. 전화 걸기·받기에는 영향이 없어요.',
+          '🔍 허용하기', gold, () => CallbackBridge.call('requestRole'));
+    }
+    if (!(_phone && _notify)) {
+      add('📞 전화 · 알림 권한', '이걸 허용해야 통화가 끝난 걸 알고 콜백문자를 보낼 수 있어요.', '📞 허용하기', sky, () async {
+        await CallbackBridge.call('requestPhone');
+        await Future.delayed(const Duration(milliseconds: 600));
+        final s = await CallbackBridge.status();
+        if (s['phone'] != true && mounted) await CallbackBridge.call('openAppSettings');
+      });
+    }
+    if (!_overlay) {
+      add('🪟 다른 앱 위에 표시', '이걸 허용해야 통화 중 · 통화 후에 전화팝업과 "콜백문자 보낼까요?" 창이 화면에 떠요.',
+          '🪟 허용하기', coral, () => CallbackBridge.call('requestOverlay'));
+    }
+    if (_s['calllog'] != true || _s['contacts'] != true) {
+      add('📒 통화 기록 · 연락처', '이걸 허용해야 전화팝업에 고객 메모와 저장된 이름이 보여요.', '📒 허용하기', gold, () async {
+        await CallbackBridge.call('requestMemo');
+        await Future.delayed(const Duration(milliseconds: 600));
+        final s = await CallbackBridge.status();
+        if (s['calllog'] != true && mounted) await CallbackBridge.call('openAppSettings');
+      });
+    }
+    if (_s['summary'] != true) {
+      add('🤖 알림 읽기 (통화요약)', '이걸 허용해야 에이닷 · 익시오 · 갤럭시 AI 통화요약이 그 고객 메모에 자동으로 저장돼요. (요약 알림만 읽어요)',
+          '🤖 허용하기', const Color(0xFF3A86D8), () => CallbackBridge.call('requestSummary'));
+    }
+    if (!(_s['battery'] == true && _s['saver'] != true)) {
+      add('🔋 배터리 "제한 없음"', '이걸 켜야 휴대폰이 쉬고 있을 때도 전화가 오면 전화팝업이 바로 떠요. 앱 정보에서 [배터리] → "제한 없음"을 골라주세요.',
+          '🔋 앱 정보 열기', mint, () => CallbackBridge.call('openBattery'));
+    }
+    if ((_s['templates'] ?? 0) == 0 && _s['linked'] == true) {
+      add('✏️ 콜백문자 템플릿', '템플릿을 1개 만들어야 통화가 끝났을 때 보낼 현장 안내 문자가 나와요.', '✏️ 템플릿 만들기', violet, _manage);
+    }
+    if (n == 0) {
+      return [
+        Container(
+          padding: const EdgeInsets.all(14),
+          margin: const EdgeInsets.only(bottom: 14),
+          decoration: BoxDecoration(color: mint.withValues(alpha: .1), borderRadius: BorderRadius.circular(14)),
+          child: const Text('✅ 모두 켜졌어요! 전화가 오면 전화팝업이 뜨고, 통화가 끝나면 콜백문자를 보낼 수 있어요.',
+              style: TextStyle(fontWeight: FontWeight.w700, color: mint)),
+        ),
+      ];
+    }
+    return [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
+        child: Text('아직 안 된 것 $n가지', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5, color: Color(0xFF3B4850))),
+      ),
+      ...items,
+    ];
+  }
+
   Widget _step(int n, String title, String desc, bool done, String btn, Color color, VoidCallback onTap) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -234,57 +298,8 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
                 )
               : ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 32), children: [
                   _setupCard(),
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(4, 0, 4, 10),
-                    child: Text('하나씩 직접 켜기 · 확인하기', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5, color: Color(0xFF3B4850))),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    margin: const EdgeInsets.only(bottom: 14),
-                    decoration: BoxDecoration(
-                      color: _allOn ? mint.withValues(alpha: .1) : gold.withValues(alpha: .12),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Text(
-                      _allOn
-                          ? '✅ 준비 완료! 저장 안 된 번호와 통화가 끝나면 알림이 떠요.'
-                          : '아래 6가지를 켜면, 전화가 올 때 전화팝업이 뜨고 통화가 끝나면 현장 안내 문자를 바로 보낼 수 있어요.',
-                      style: TextStyle(fontWeight: FontWeight.w700, color: _allOn ? mint : const Color(0xFF7A5A1C)),
-                    ),
-                  ),
-                  _step(1, '걸려온 번호 확인', '"기본 발신번호 표시 및 스팸 앱으로 설정하시겠습니까?" 창에서 [기본으로 설정]을 눌러주세요. 전화 걸기·받기·통화에는 영향이 없어요. 저장 안 된 번호인지만 확인해요. (후후·T전화·알린다 같은 발신자 표시 앱의 표시 기능은 꺼질 수 있어요)',
-                      _role, '🔍 번호 확인 켜기', gold, () => CallbackBridge.call('requestRole')),
-                  _step(2, '통화 끝남 알기', '"전화 걸기 및 관리" 권한을 허용해주세요. 통화가 끝났는지만 확인해요.',
-                      _phone && _notify, '📞 권한 허용하기', sky, () async {
-                    await CallbackBridge.call('requestPhone');
-                    await Future.delayed(const Duration(milliseconds: 600));
-                    final s = await CallbackBridge.status();
-                    if (s['phone'] != true && mounted) {
-                      // 예전에 '거부'를 눌렀으면 설정 화면에서 직접 켜야 함
-                      await CallbackBridge.call('openAppSettings');
-                    }
-                  }),
-                  _step(3, '통화 후 확인 창 띄우기', '"다른 앱 위에 표시"에서 코디야를 켜주세요. 통화가 끝나면 화면 가운데 "콜백문자를 보내시겠습니까?" 창이 떠요. (끄면 알림줄로 알려줘요)',
-                      _overlay, '🪟 확인 창 켜기', coral, () => CallbackBridge.call('requestOverlay')),
-                  _step(4, '📒 전화팝업', '전화가 울리면 위쪽 알림으로 그 고객의 지난 메모가 보여요. 알림을 누르면 위쪽 반 화면에 메모가 열리고 아래 전화 화면으로 그대로 받을 수 있어요. 통화 중에도 "📒 메모 보기·쓰기" 알림을 누르면 열려요. 끊으면 전화팝업이 떠요. 🖥 PC 홈페이지에서 [PC 전화팝업]을 켜두면 PC에도 같이 떠요. 저장된 연락처도 보이게 "통화 기록"(걸려온 번호 확인만)을 허용해주세요. 메모는 키보드의 🎤 마이크로 말해서 적을 수도 있어요.',
-                      _s['calllog'] == true, '📒 전화팝업 켜기', gold, () async {
-                    await CallbackBridge.call('requestMemo');
-                    await Future.delayed(const Duration(milliseconds: 600));
-                    final s = await CallbackBridge.status();
-                    if (s['calllog'] != true && mounted) await CallbackBridge.call('openAppSettings');
-                  }),
-                  // v1.2.7: 5번 통화요약 자동 저장 · 6번 명함 등록은 화면에서 뺐어요 (통화요약 알림 읽기는 [한 번에 켜기] ④단계로 같이 켜져요)
-                  _step(5, '🔋 배터리 "제한 없음"', '삼성 배터리 절약이 뒤에서 인터넷을 막으면 전화가 올 때 고객 메모를 못 불러와요. 앱 정보에서 [배터리] → "제한 없음", [모바일 데이터] → "백그라운드 데이터 사용 허용"을 켜주세요.',
-                      _s['battery'] == true && _s['saver'] != true, '🔋 앱 정보 열기', mint, () => CallbackBridge.call('openBattery')),
-                  _step(6, '📤 PC 문자 발송 (내 휴대폰으로 무료)', 'PC 코디야 [문자·단체·예약]에서 "내 휴대폰으로(무료)"를 골라 보내면, 이 휴대폰이 문자를 한 통씩 자동으로 보내요. 내 휴대폰 요금제의 문자로 나가서 문자 비용이 따로 들지 않아요. 예약 발송도 돼요.',
-                      _s['psms'] == true, _s['psms'] == true ? '📤 켜져 있어요 (설정 보기)' : '📤 PC 문자 발송 켜기', const Color(0xFF0AA394),
-                      () async { await CallbackBridge.call('psmsOpen'); }),
-                  _step(7, '콜백템플릿 만들기', (_s['templates'] ?? 0) > 0
-                      ? '템플릿 ${_s['templates']}개가 알림 버튼으로 나와요. 현장이 여러 개면 홈페이지에서 템플릿을 늘릴 수 있어요.'
-                      : (_s['linked'] == true
-                          ? '홈페이지에서 현장 안내 문자(템플릿)를 1개 만들어주세요. 자동 알림까지 무료예요.'
-                          : '홈페이지에 로그인하면 내 템플릿을 불러와요.'),
-                      (_s['templates'] ?? 0) > 0, '✏️ 템플릿 만들기', violet, _manage),
+                  // v1.2.7: '하나씩 직접 켜기'는 없애고, 아직 안 된 것만 "이걸 허용해야 ○○를 쓸 수 있어요"로
+                  ..._missingList(),
                   const SizedBox(height: 6),
                   _btn(_overlay ? '🔔 테스트 창 띄워보기' : '🔔 테스트 알림 보기', mint, _allOn ? () async {
                     await CallbackBridge.call('test');
@@ -294,6 +309,9 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
                   } : null),
                   const SizedBox(height: 10),
                   _btn('템플릿·설정·발송내역·이용권', sky, _manage, soft: true),
+                  const SizedBox(height: 10),
+                  _btn(_s['psms'] == true ? '📤 PC 문자 발송 (켜져 있어요 · 설정 보기)' : '📤 PC 문자 발송 켜기 (선택 · 내 휴대폰으로 무료)', const Color(0xFF0AA394),
+                      () async { await CallbackBridge.call('psmsOpen'); }, soft: true),
                   if ((_s['diag'] ?? '').toString().isNotEmpty) ...[
                     const SizedBox(height: 16),
                     Container(

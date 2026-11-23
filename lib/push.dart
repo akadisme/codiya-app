@@ -31,6 +31,9 @@ class PushService {
   /// 알림을 눌렀을 때
   final taps = StreamController<PushTap>.broadcast();
 
+  /// 화면이 아직 준비 안 됐을 때(잠금 화면 · 앱이 막 켜지는 중) 누른 알림 — 화면이 뜨면 열어요
+  PushTap? pending;
+
   /// 새 알림 도착·읽음 등 알림함을 새로 그려야 할 때
   final changes = StreamController<void>.broadcast();
 
@@ -158,7 +161,8 @@ class PushService {
   void _emit(Map<String, dynamic> data) {
     final tap = PushTap(int.tryParse('${data['nid'] ?? ''}') ?? 0, '${data['link'] ?? ''}');
     markOpened(tap.nid);
-    taps.add(tap);
+    pending = tap; // 화면에서 열면 지워요 (잠금 해제 뒤에도 열리게)
+    if (taps.hasListener) taps.add(tap);
   }
 
   /// 앱이 켜질 때마다 서버에 기기 등록 + 구독할 토픽 맞추기

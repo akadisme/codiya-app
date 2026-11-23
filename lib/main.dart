@@ -65,18 +65,38 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
       if (c != null) UpdateCheck.run(c, force: true);
       Future.delayed(const Duration(seconds: 6), _maybeSetup);
     });
-    _sub = PushService.instance.taps.stream.listen((t) {
-      if (t.link.startsWith('http')) {
-        _openLink(t.link);
-      } else {
-        _openInbox();
-      }
-    });
+    _sub = PushService.instance.taps.stream.listen(_onTap);
+    // 앱이 꺼져 있을 때 · 잠금 화면에서 누른 알림 (화면이 뜬 뒤에 열기)
+    WidgetsBinding.instance.addPostFrameCallback((_) => Future.delayed(const Duration(milliseconds: 800), _openPending));
+  }
+
+  /// v1.2.5: 알림을 누르면 그 화면으로 — 잠금을 풀고 나서도 열리게 (잠금 중에는 화면이 안 그려져서 놓치던 문제)
+  void _onTap(PushTap t) {
+    if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed || _web.currentState == null) return; // 화면이 뜨면 _openPending 이 열어요
+    PushService.instance.pending = null;
+    if (t.link.startsWith('http')) {
+      _openLink(t.link);
+    } else {
+      _openInbox();
+    }
+  }
+
+  void _openPending() {
+    final t = PushService.instance.pending;
+    if (t == null || !mounted) return;
+    if (_web.currentState == null) { Future.delayed(const Duration(milliseconds: 500), _openPending); return; }
+    PushService.instance.pending = null;
+    if (t.link.startsWith('http')) {
+      _openLink(t.link);
+    } else {
+      _openInbox();
+    }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      Future.delayed(const Duration(milliseconds: 400), _openPending); // 잠금을 풀고 돌아오면 누른 알림 화면으로
       final c = navKey.currentState?.overlay?.context;
       if (c != null) UpdateCheck.run(c); // 다시 열 때도 (30분에 한 번)
       Future.delayed(const Duration(seconds: 3), _maybeSetup);

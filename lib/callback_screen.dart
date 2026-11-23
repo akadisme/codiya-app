@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'config.dart';
 
@@ -70,13 +71,25 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
     if (state == AppLifecycleState.resumed) _refresh(); // 권한 화면에서 돌아오면 다시 확인
   }
 
+  /// v1.2.7: [동의하고 한 번에 켜기]를 한 번이라도 눌렀는지 — 누르기 전에는 '아직 안 된 것'을 안 보여요
+  bool _tried = false;
+
   Future<void> _refresh() async {
     final s = await CallbackBridge.status();
+    final sp = await SharedPreferences.getInstance();
     if (!mounted) return;
     setState(() {
       _s = s;
+      _tried = sp.getBool('setup_tried') == true;
       _loading = false;
     });
+  }
+
+  Future<void> _startAll() async {
+    final sp = await SharedPreferences.getInstance();
+    await sp.setBool('setup_tried', true);
+    if (mounted) setState(() => _tried = true);
+    await CallbackBridge.call('setupAll');
   }
 
   bool get _role => _s['role'] == true;
@@ -136,7 +149,7 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
               '걸려온 번호의 저장 이름과 통화요약 알림은 전화팝업 · 고객 메모에만 쓰고, 다른 곳에 보내지 않아요.',
               style: TextStyle(color: Color(0xFF7A8A92), fontSize: 12, height: 1.55)),
           const SizedBox(height: 12),
-          _btn('동의하고 한 번에 켜기', gold, () => CallbackBridge.call('setupAll'), icon: Icons.check_circle_outline),
+          _btn('동의하고 한 번에 켜기', gold, _startAll, icon: Icons.check_circle_outline),
         ],
       ]),
     );
@@ -188,6 +201,7 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
 
   /// 아직 안 된 것만 — 무엇을 허용하면 어떤 기능을 쓸 수 있는지
   List<Widget> _missingList() {
+    if (!_tried && !_ready) return const []; // 한 번에 켜기를 누르기 전에는 버튼 하나만
     final items = <Widget>[];
     var n = 0;
     void add(String title, String why, String btn, Color color, VoidCallback onTap) {
@@ -304,6 +318,7 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
                   _setupCard(),
                   // v1.2.7: '하나씩 직접 켜기'는 없애고, 아직 안 된 것만 "이걸 허용해야 ○○를 쓸 수 있어요"로
                   ..._missingList(),
+                  if (_tried || _ready) ...[
                   const SizedBox(height: 6),
                   _btn(_overlay ? '🔔 테스트 창 띄워보기' : '🔔 테스트 알림 보기', mint, _allOn ? () async {
                     await CallbackBridge.call('test');
@@ -344,6 +359,7 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
                     '· 에이닷·갤럭시 AI 통화 요약에서 [공유] → "통화 메모에 저장"을 누르면 고객 메모에 날짜별로 쌓여요',
                     style: TextStyle(color: Color(0xFF5B6870), fontSize: 13, height: 1.7),
                   ),
+                  ], // v1.2.7: 테스트 · 설정 · 안내는 한 번에 켜기를 누른 뒤에만
                   if (_s['linked'] == false)
                     Padding(
                       padding: const EdgeInsets.only(top: 12),

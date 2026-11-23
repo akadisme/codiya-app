@@ -273,16 +273,13 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
                     final s = await CallbackBridge.status();
                     if (s['calllog'] != true && mounted) await CallbackBridge.call('openAppSettings');
                   }),
-                  _step(5, '🤖 통화요약 자동 저장', '에이닷·익시오·갤럭시 AI 등에서 통화요약 알림이 오면, 방금 통화한 고객 메모에 자동으로 저장돼요. "알림 읽기"에서 코디야를 켜주세요. (요약 알림만 저장하고, 다른 알림은 저장하지 않아요. 요약 기능을 안 쓰면 건너뛰어도 돼요)',
-                      _s['summary'] == true, '🤖 자동 저장 켜기', const Color(0xFF3A86D8), () => CallbackBridge.call('requestSummary')),
-                  _step(6, '📇 명함 등록 (AI가 읽어요)', '고객 명함을 찍으면 AI가 이름·회사·전화번호를 읽어서 그 번호 고객에 자동으로 붙여요. 그 고객이 전화하면 받기 전에 명함이 보여요. (통화 중 메모 화면의 [📇 명함] 버튼으로도 등록할 수 있어요)',
-                      false, '📇 명함 찍어서 등록', const Color(0xFF0AA394), () => CallbackBridge.call('cardRegister')),
-                  _step(7, '🔋 배터리 "제한 없음"', '삼성 배터리 절약이 뒤에서 인터넷을 막으면 전화가 올 때 고객 메모를 못 불러와요. 앱 정보에서 [배터리] → "제한 없음", [모바일 데이터] → "백그라운드 데이터 사용 허용"을 켜주세요.',
+                  // v1.2.7: 5번 통화요약 자동 저장 · 6번 명함 등록은 화면에서 뺐어요 (통화요약 알림 읽기는 [한 번에 켜기] ④단계로 같이 켜져요)
+                  _step(5, '🔋 배터리 "제한 없음"', '삼성 배터리 절약이 뒤에서 인터넷을 막으면 전화가 올 때 고객 메모를 못 불러와요. 앱 정보에서 [배터리] → "제한 없음", [모바일 데이터] → "백그라운드 데이터 사용 허용"을 켜주세요.',
                       _s['battery'] == true && _s['saver'] != true, '🔋 앱 정보 열기', mint, () => CallbackBridge.call('openBattery')),
-                  _step(8, '📤 PC 문자 발송 (내 휴대폰으로 무료)', 'PC 코디야 [문자·단체·예약]에서 "내 휴대폰으로(무료)"를 골라 보내면, 이 휴대폰이 문자를 한 통씩 자동으로 보내요. 내 휴대폰 요금제의 문자로 나가서 문자 비용이 따로 들지 않아요. 예약 발송도 돼요.',
+                  _step(6, '📤 PC 문자 발송 (내 휴대폰으로 무료)', 'PC 코디야 [문자·단체·예약]에서 "내 휴대폰으로(무료)"를 골라 보내면, 이 휴대폰이 문자를 한 통씩 자동으로 보내요. 내 휴대폰 요금제의 문자로 나가서 문자 비용이 따로 들지 않아요. 예약 발송도 돼요.',
                       _s['psms'] == true, _s['psms'] == true ? '📤 켜져 있어요 (설정 보기)' : '📤 PC 문자 발송 켜기', const Color(0xFF0AA394),
                       () async { await CallbackBridge.call('psmsOpen'); }),
-                  _step(9, '콜백템플릿 만들기', (_s['templates'] ?? 0) > 0
+                  _step(7, '콜백템플릿 만들기', (_s['templates'] ?? 0) > 0
                       ? '템플릿 ${_s['templates']}개가 알림 버튼으로 나와요. 현장이 여러 개면 홈페이지에서 템플릿을 늘릴 수 있어요.'
                       : (_s['linked'] == true
                           ? '홈페이지에서 현장 안내 문자(템플릿)를 1개 만들어주세요. 자동 알림까지 무료예요.'

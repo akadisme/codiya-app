@@ -62,8 +62,8 @@ object CallbackNotifier {
         val hasHint = top.optInt("site_id") != 0 && suggested.contains(top.optInt("site_id"))
 
         // '다른 앱 위에 표시' 권한이 있으면 화면 가운데 창으로, 없으면 알림줄로
-        // 같은 번호 메모창이 떠 있으면 그 아래에 붙여서 한 화면으로 (메모 쓰고 바로 보내기)
-        if (MemoPopup.attachCallback(c, num, missed, ordered, hasHint)) { CallbackStore.diag(c, "$head · ✅ 메모창 아래에 콜백문자"); return }
+        // 같은 번호 전화팝업이 떠 있으면 그 아래에 붙여서 한 화면으로 (메모 쓰고 바로 보내기)
+        if (MemoPopup.attachCallback(c, num, missed, ordered, hasHint)) { CallbackStore.diag(c, "$head · ✅ 전화팝업 아래에 콜백문자"); return }
         val fallback = { notifyBar(c, num, missed, ordered, hasHint) }
         if (CallbackPopup.canShow(c) && CallbackPopup.show(c, num, missed, ordered, hasHint, fallback)) { CallbackStore.diag(c, "$head · ✅ 확인 창 띄움"); return }
         CallbackStore.diag(c, "$head · ✅ 알림줄에 알림 (확인 창 권한 꺼짐)")

@@ -248,7 +248,7 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
                     child: Text(
                       _allOn
                           ? '✅ 준비 완료! 저장 안 된 번호와 통화가 끝나면 알림이 떠요.'
-                          : '아래 6가지를 켜면, 전화가 올 때 메모창이 뜨고 통화가 끝나면 현장 안내 문자를 바로 보낼 수 있어요.',
+                          : '아래 6가지를 켜면, 전화가 올 때 전화팝업이 뜨고 통화가 끝나면 현장 안내 문자를 바로 보낼 수 있어요.',
                       style: TextStyle(fontWeight: FontWeight.w700, color: _allOn ? mint : const Color(0xFF7A5A1C)),
                     ),
                   ),
@@ -266,8 +266,8 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
                   }),
                   _step(3, '통화 후 확인 창 띄우기', '"다른 앱 위에 표시"에서 코디야를 켜주세요. 통화가 끝나면 화면 가운데 "콜백문자를 보내시겠습니까?" 창이 떠요. (끄면 알림줄로 알려줘요)',
                       _overlay, '🪟 확인 창 켜기', coral, () => CallbackBridge.call('requestOverlay')),
-                  _step(4, '📒 전화 메모창', '전화가 울리면 위쪽 알림으로 그 고객의 지난 메모가 보여요. 알림을 누르면 위쪽 반 화면에 메모가 열리고 아래 전화 화면으로 그대로 받을 수 있어요. 통화 중에도 "📒 메모 보기·쓰기" 알림을 누르면 열려요. 끊으면 메모창이 떠요. 🖥 PC 홈페이지에서 [PC 메모창]을 켜두면 PC에도 같이 떠요. 저장된 연락처도 보이게 "통화 기록"(걸려온 번호 확인만)을 허용해주세요. 메모는 키보드의 🎤 마이크로 말해서 적을 수도 있어요.',
-                      _s['calllog'] == true, '📒 메모창 켜기', gold, () async {
+                  _step(4, '📒 전화팝업', '전화가 울리면 위쪽 알림으로 그 고객의 지난 메모가 보여요. 알림을 누르면 위쪽 반 화면에 메모가 열리고 아래 전화 화면으로 그대로 받을 수 있어요. 통화 중에도 "📒 메모 보기·쓰기" 알림을 누르면 열려요. 끊으면 전화팝업이 떠요. 🖥 PC 홈페이지에서 [PC 전화팝업]을 켜두면 PC에도 같이 떠요. 저장된 연락처도 보이게 "통화 기록"(걸려온 번호 확인만)을 허용해주세요. 메모는 키보드의 🎤 마이크로 말해서 적을 수도 있어요.',
+                      _s['calllog'] == true, '📒 전화팝업 켜기', gold, () async {
                     await CallbackBridge.call('requestMemo');
                     await Future.delayed(const Duration(milliseconds: 600));
                     final s = await CallbackBridge.status();
@@ -320,7 +320,7 @@ class _CallbackScreenState extends State<CallbackScreen> with WidgetsBindingObse
                   const Text(
                     '· 문자는 내 휴대폰 문자앱으로 나가요 (요금제의 문자 사용)\n'
                     '· 알림 버튼을 누르면 내용이 채워진 문자앱이 열려요. 보내기만 누르세요\n'
-                    '· 저장된 연락처와의 통화는 콜백문자 창이 뜨지 않아요 (메모창은 떠요)\n'
+                    '· 저장된 연락처와의 통화는 콜백문자 창이 뜨지 않아요 (전화팝업은 떠요)\n'
                     '· 에이닷·갤럭시 AI 통화 요약에서 [공유] → "통화 메모에 저장"을 누르면 고객 메모에 날짜별로 쌓여요',
                     style: TextStyle(color: Color(0xFF5B6870), fontSize: 13, height: 1.7),
                   ),

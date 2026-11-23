@@ -7,7 +7,7 @@
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <!-- 콜백문자: 통화 후 화면 가운데 "보내시겠습니까?" 창 -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-    <!-- 📒 전화 메모창: 저장된 연락처에서 온 전화도 번호 확인 (통화 기록 내용은 읽지 않음) -->
+    <!-- 📒 전화팝업: 저장된 연락처에서 온 전화도 번호 확인 (통화 기록 내용은 읽지 않음) -->
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
     <!-- 📒 위쪽 메모 화면의 [📞 전화 받기] 버튼 -->
     <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />

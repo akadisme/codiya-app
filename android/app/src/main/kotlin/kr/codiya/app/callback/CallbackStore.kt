@@ -146,7 +146,7 @@ object CallbackStore {
                     "&mask=" + URLEncoder.encode(mask, "UTF-8") + "&call=" + (if (call && attempt == 1) 1 else 0) +
                     // 👤 PC 전화팝업에도 휴대폰에 저장된 이름이 먼저 보이게 (울릴 때만 · 서버엔 1시간만 두고 지움)
                     (if (call && attempt == 1 && num.isNotEmpty()) phoneName(c, num).let { if (it.isNotEmpty()) "&pname=" + URLEncoder.encode(it, "UTF-8") else "" } else "") +
-                    // 🖥 PC 메모창: 울릴 때 번호를 같이 보내서 PC에 띄움 (서버엔 1시간만 두고 지움)
+                    // 🖥 PC 전화팝업: 울릴 때 번호를 같이 보내서 PC에 띄움 (서버엔 1시간만 두고 지움)
                     (if (call && attempt == 1 && num.isNotEmpty()) "&num=" + URLEncoder.encode(num, "UTF-8") else ""))
                 val con = (url.openConnection() as HttpURLConnection).apply { connectTimeout = 6000; readTimeout = 9000 }
                 val code = con.responseCode

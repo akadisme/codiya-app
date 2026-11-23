@@ -34,7 +34,7 @@ import java.lang.ref.WeakReference
 class MemoActivity : Activity() {
     companion object {
         private var cur: WeakReference<MemoActivity>? = null
-        /** 통화가 끝나면 닫음 (적던 메모는 저장) → 끊은 뒤 메모창·콜백문자 화면으로 */
+        /** 통화가 끝나면 닫음 (적던 메모는 저장) → 끊은 뒤 전화팝업·콜백문자 화면으로 */
         fun refresh(key: String) { cur?.get()?.let { a -> a.runOnUiThread { if (a.key == key) a.load() } } }
         fun finishOnCallEnd() {
             cur?.get()?.let { a -> a.runOnUiThread { a.saveDraft(); a.finish() } }
@@ -69,7 +69,7 @@ class MemoActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         cur = WeakReference(this)
-        MemoPopup.closeForActivity(this) // 끊은 뒤 메모창이 떠 있으면 닫기 (창이 2개 뜨지 않게)
+        MemoPopup.closeForActivity(this) // 끊은 뒤 전화팝업이 떠 있으면 닫기 (창이 2개 뜨지 않게)
         num = intent.getStringExtra("num") ?: ""
         key = CallbackStore.memoKey(num)
         if (key.isEmpty()) { finish(); return }

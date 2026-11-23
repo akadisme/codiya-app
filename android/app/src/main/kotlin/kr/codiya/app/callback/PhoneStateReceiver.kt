@@ -17,7 +17,7 @@ class PhoneStateReceiver : BroadcastReceiver() {
         val p = CallbackStore.prefs(context)
         val ph = p.getString("ph", "idle") ?: "idle"
         val now = System.currentTimeMillis()
-        // 📒 전화 메모창: 저장된 연락처 포함 모든 전화 (번호는 '통화 기록' 권한이 있을 때 같이 옴)
+        // 📒 전화팝업: 저장된 연락처 포함 모든 전화 (번호는 '통화 기록' 권한이 있을 때 같이 옴)
         if (state == TelephonyManager.EXTRA_STATE_RINGING) {
             @Suppress("DEPRECATION")
             val inc = CallbackStore.digits(intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER))
@@ -36,13 +36,13 @@ class PhoneStateReceiver : BroadcastReceiver() {
             TelephonyManager.EXTRA_STATE_IDLE -> {
                 MemoNotify.stopRinging()
                 MemoNotify.hideTalking(context)
-                MemoActivity.finishOnCallEnd() // 위쪽 반 화면 메모는 닫고 (적던 건 저장) → 끊은 뒤 메모창
-                MemoPopup.onCallEnd(context) // 끊으면 그 번호 메모창 (띄우면 알림은 지움)
+                MemoActivity.finishOnCallEnd() // 위쪽 반 화면 메모는 닫고 (적던 건 저장) → 끊은 뒤 전화팝업
+                MemoPopup.onCallEnd(context) // 끊으면 그 번호 전화팝업 (띄우면 알림은 지움)
                 if (ph == "talking") Rec.afterCall(context) // 🎙 통화녹음 AI 요약 (켜둔 경우만)
                 // 모든 통화가 끝났을 때 한 번만 옴 (같은 알림이 두 번 와도 한 번만 처리)
                 p.edit().putString("ph", "idle").putBoolean("ph_wait", false).apply()
                 if (ph != "ringing" && ph != "talking") {
-                    if (ph == "outgoing") { CallbackStore.takeCallNums(context); MemoPopup.onOutgoingEnd(context) } // 📞 발신 후 메모창 (설정에서 켠 경우만)
+                    if (ph == "outgoing") { CallbackStore.takeCallNums(context); MemoPopup.onOutgoingEnd(context) } // 📞 발신 후 전화팝업 (설정에서 켠 경우만)
                     return
                 }
                 val missed = ph == "ringing"

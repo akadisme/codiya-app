@@ -11,7 +11,7 @@ import org.json.JSONObject
 
 /**
  * 📒 전화가 울릴 때 상단 알림으로 고객 메모 보여주기
- * (수신 화면이 다른 앱 창을 가려서, 받기 전에는 알림 배너로 · 끊은 뒤엔 메모창)
+ * (수신 화면이 다른 앱 창을 가려서, 받기 전에는 알림 배너로 · 끊은 뒤엔 전화팝업)
  */
 object MemoNotify {
     private const val CHANNEL = "call_memo"
@@ -47,7 +47,7 @@ object MemoNotify {
         if (name.isEmpty() && n == 0) {
             if (d.has("_err")) {
                 notify(c, NotificationCompat.Builder(c, CHANNEL).setContentTitle("📒 " + MemoPopup.pretty(num))
-                    .setContentText("메모를 불러오지 못했어요 · 끊은 뒤 메모창에서 다시 확인해요"))
+                    .setContentText("메모를 불러오지 못했어요 · 끊은 뒤 전화팝업에서 다시 확인해요"))
                 return
             }
             val t = if (calls <= 1) "📒 처음 온 번호예요" else "📒 메모가 없는 번호예요"
@@ -156,7 +156,7 @@ object MemoNotify {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC) // 잠금화면에서도 내용 보이게
             .setOnlyAlertOnce(!ringing) // 울리는 동안은 다시 띄울 때마다 화면 위에 보이게
             .setAutoCancel(true)
-            .setTimeoutAfter(60 * 60 * 1000L) // 긴 통화 중에도 쓸어내리면 보이게 (끊으면 메모창으로 바뀜)
+            .setTimeoutAfter(60 * 60 * 1000L) // 긴 통화 중에도 쓸어내리면 보이게 (끊으면 전화팝업으로 바뀜)
         val n = b.build()
         if (ringing) last = n
         try {

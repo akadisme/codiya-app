@@ -27,7 +27,7 @@ import android.widget.Toast
 import org.json.JSONObject
 
 /**
- * 📒 전화 메모창: 전화가 울리면 받기 전에 화면 위쪽에 떠요
+ * 📒 전화팝업: 전화가 울리면 받기 전에 화면 위쪽에 떠요
  *  · 날짜별 기록(최근 것 위, 길면 드래그로 스크롤) + 새 메모 (키보드 🎤 마이크로 말해서 적기)
  *  · [작게] → 한 줄 띠로 줄어듦 · 위아래로 끌어서 옮김 · [✕] 닫기
  *  · 전화 받기 버튼을 가리지 않게 창 밖 터치는 그대로 통과
@@ -64,7 +64,7 @@ object MemoPopup {
     private var cbPart: LinearLayout? = null
     private var histScroll: ScrollView? = null
 
-    // ⏱ 통화 후 메모창: 정한 시간(기본 10초) 뒤 저절로 닫힘 · 창을 한 번이라도 누르면 멈춤
+    // ⏱ 통화 후 전화팝업: 정한 시간(기본 10초) 뒤 저절로 닫힘 · 창을 한 번이라도 누르면 멈춤
     private var cdTv: TextView? = null
     private var cdLeft = 0
     private var cdApp: Context? = null
@@ -111,7 +111,7 @@ object MemoPopup {
     private fun round(c: Context, color: Int, r: Float) = GradientDrawable().apply { setColor(color); cornerRadius = dp(c, r).toFloat() }
     private fun grad(c: Context, a: Int, b: Int, r: Float) = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(a, b)).apply { cornerRadius = dp(c, r).toFloat() }
 
-    /** 메모창 쓸 수 있는 상태인지 (권한·설정) */
+    /** 전화팝업 쓸 수 있는 상태인지 (권한·설정) */
     fun enabled(c: Context): Boolean {
         // (확인 창 권한은 여기서 보지 않음: 일부 휴대폰은 켜 놓아도 꺼짐으로 알려줘서 알림까지 막혔음 → 창은 띄워 보고 실패하면 알림으로)
         val cfg = CallbackStore.cachedConfig(c) ?: return false
@@ -119,7 +119,7 @@ object MemoPopup {
         return cfg.optBoolean("memo", false)
     }
 
-    // 통화 후 메모 방식: 울릴 때는 알림만, 끊으면 그 번호 메모창
+    // 통화 후 메모 방식: 울릴 때는 알림만, 끊으면 그 번호 전화팝업
     @Volatile private var pendNum = ""
     @Volatile private var pendKey = ""
 
@@ -143,7 +143,7 @@ object MemoPopup {
         CallbackStore.addRecent(app, num)
         MemoNotify.startRinging(app)
         MemoNotify.post(app, num, CallbackStore.memoCached(app, key) ?: JSONObject().put("_loading", true))
-        CallbackStore.diag(app, "☎ 전화 옴 " + CallbackStore.mask(num) + " · 위쪽 알림에 메모 표시 (끊으면 메모창)")
+        CallbackStore.diag(app, "☎ 전화 옴 " + CallbackStore.mask(num) + " · 위쪽 알림에 메모 표시 (끊으면 전화팝업)")
         load(app, num, key, call = true)
         Thread { CallbackStore.fetchConfig(app) }.start() // 다음 전화 대비 설정 새로고침
     }
@@ -170,13 +170,13 @@ object MemoPopup {
         MemoNotify.showTalking(app, num)
     }
 
-    /** 다른 곳(통화요약 자동 저장 등)에서 메모가 바뀌었을 때: 열려 있는 메모창 새로고침 */
+    /** 다른 곳(통화요약 자동 저장 등)에서 메모가 바뀌었을 때: 열려 있는 전화팝업 새로고침 */
     fun refresh(c: Context, key: String) {
         val app = c.applicationContext
         main.post { if (curKey == key && root != null) load(app, curNum, key, call = false) }
     }
 
-    /** 이번 통화 요약이 자동 저장됐는지 (메모창에 "🤖 통화요약 저장 완료") */
+    /** 이번 통화 요약이 자동 저장됐는지 (전화팝업에 "🤖 통화요약 저장 완료") */
     fun summaryNote(c: Context, key: String): String {
         val t = CallbackStore.prefs(c).getLong("sum_ok_" + key, 0L)
         return if (t > 0 && System.currentTimeMillis() - t < 60 * 60_000L) "🤖 통화요약 저장 완료" else ""
@@ -211,12 +211,12 @@ object MemoPopup {
             if (num.length < 8) return@Thread
             if (mode == 1 && name.isNotEmpty()) return@Thread // 저장된 연락처는 건너뜀
             pendNum = num; pendKey = CallbackStore.memoKey(num)
-            CallbackStore.diag(app, "📞 발신 끝 " + CallbackStore.mask(num) + " → 메모창")
+            CallbackStore.diag(app, "📞 발신 끝 " + CallbackStore.mask(num) + " → 전화팝업")
             onCallEnd(app)
         }.start()
     }
 
-    /** 통화가 끝났을 때: 그 번호 메모창을 띄움 (지난 메모 + 새로 쓰기). 못 띄우면 알림을 그대로 둠 */
+    /** 통화가 끝났을 때: 그 번호 전화팝업을 띄움 (지난 메모 + 새로 쓰기). 못 띄우면 알림을 그대로 둠 */
     fun onCallEnd(c: Context) {
         val app = c.applicationContext
         var num = pendNum; var key = pendKey
@@ -234,12 +234,12 @@ object MemoPopup {
             val ok = runCatching { show(app, num, key) }
             if (ok.isSuccess) {
                 MemoNotify.cancel(app)
-                CallbackStore.diag(app, "☎ 통화 끝 " + CallbackStore.mask(num) + " · ✅ 메모창 띄움")
+                CallbackStore.diag(app, "☎ 통화 끝 " + CallbackStore.mask(num) + " · ✅ 전화팝업 띄움")
                 load(app, num, key, call = false)
             } else {
                 root = null; curKey = ""
                 val e = ok.exceptionOrNull()
-                CallbackStore.diag(app, "☎ 통화 끝 " + CallbackStore.mask(num) + " · 메모창을 못 띄움 (" + (e?.javaClass?.simpleName ?: "") +
+                CallbackStore.diag(app, "☎ 통화 끝 " + CallbackStore.mask(num) + " · 전화팝업을 못 띄움 (" + (e?.javaClass?.simpleName ?: "") +
                     (if (!CallbackPopup.canShow(app)) " · 다른 앱 위에 표시 꺼짐" else "") + ") → 알림으로 메모 확인")
             }
         }
@@ -249,7 +249,7 @@ object MemoPopup {
     private fun show(c: Context, num: String, key: String) {
         val wm = c.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         if (root != null) saveDraft(c) // 다른 번호(통화 중 대기 전화): 적던 메모는 먼저 저장하고 바꿈
-        // 메모창은 항상 1개만: 전에 띄운 창이 남아 있으면 모두 닫고 새로
+        // 전화팝업은 항상 1개만: 전에 띄운 창이 남아 있으면 모두 닫고 새로
         attached.forEach { v -> runCatching { wm.removeView(v) } }
         attached.clear()
         root = null
@@ -562,7 +562,7 @@ object MemoPopup {
     }
 
     /**
-     * 통화가 끝나 콜백문자를 보낼 때: 같은 번호 메모창이 떠 있으면 그 아래에 붙여서 한 화면으로
+     * 통화가 끝나 콜백문자를 보낼 때: 같은 번호 전화팝업이 떠 있으면 그 아래에 붙여서 한 화면으로
      * (어느 스레드에서 불러도 됨) → 붙였으면 true
      */
     fun attachCallback(c: Context, num: String, missed: Boolean, list: List<JSONObject>, hint: Boolean): Boolean {
